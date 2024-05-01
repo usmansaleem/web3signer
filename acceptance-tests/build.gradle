@@ -1,0 +1,188 @@
+import groovy.text.SimpleTemplateEngine
+/*
+ * Copyright 2019 ConsenSys AG.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+ * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
+plugins {
+  id "de.undercouch.download" version "4.1.0"
+  id "com.google.osdetector" version "1.7.3"
+  id "io.gatling.gradle" version "3.9.3.1"
+}
+
+dependencies {
+
+  testImplementation project(":app")
+  testImplementation project(":core")
+  testImplementation project(":signing")
+  testImplementation project(":commandline")
+  testImplementation project(":common")
+
+  testImplementation 'org.apache.tuweni:tuweni-bytes'
+  testImplementation 'org.apache.tuweni:tuweni-units'
+
+  testImplementation 'commons-io:commons-io:2.6'
+
+  testRuntimeOnly 'javax.activation:activation'
+  testRuntimeOnly 'org.apache.logging.log4j:log4j-core'
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  testRuntimeOnly 'org.zeroturnaround:zt-exec'
+  testRuntimeOnly 'tech.pegasys:jblst'
+
+  testImplementation 'org.junit.jupiter:junit-jupiter-api'
+  testImplementation 'org.junit.jupiter:junit-jupiter-params'
+  testImplementation 'io.vertx:vertx-core'
+  testImplementation 'io.vertx:vertx-web'
+  testImplementation 'io.vertx:vertx-web-client'
+  testImplementation 'org.apache.logging.log4j:log4j-api'
+  testImplementation 'org.assertj:assertj-core'
+  testImplementation 'org.awaitility:awaitility'
+  testImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+  testImplementation 'tech.pegasys.teku.internal:bls'
+  testImplementation 'tech.pegasys.teku.internal:bls-keystore'
+  testImplementation 'tech.pegasys.teku.internal:spec'
+  testImplementation 'tech.pegasys.teku.internal:networks'
+  testImplementation 'tech.pegasys.teku.internal:json'
+  testImplementation 'tech.pegasys.teku.internal:jackson'
+  testImplementation (group: 'tech.pegasys.teku.internal', name: 'spec', classifier: 'test-fixtures')
+  testImplementation (group: 'tech.pegasys.teku.internal', name: 'bls', classifier: 'test-fixtures')
+  testImplementation 'tech.pegasys.teku.internal:serializer'
+  testImplementation 'tech.pegasys.teku.internal:unsigned'
+  testImplementation 'tech.pegasys.teku.internal:async'
+  testImplementation 'io.rest-assured:rest-assured'
+  testImplementation 'org.web3j:core'
+  testImplementation 'org.apache.tuweni:tuweni-bytes'
+  testImplementation 'org.apache.tuweni:tuweni-net'
+  testImplementation 'com.github.arteam:simple-json-rpc-server'
+  testImplementation 'com.github.arteam:simple-json-rpc-client'
+  testImplementation 'org.flywaydb:flyway-core'
+  testImplementation 'io.rest-assured:rest-assured'
+  testImplementation 'org.jdbi:jdbi3-core'
+  testImplementation 'org.zeroturnaround:zt-exec'
+  testImplementation 'org.web3j:crypto'
+  testImplementation 'org.web3j:besu'
+  testImplementation (testFixtures(project(":keystorage")))
+  testImplementation (testFixtures(project(":slashing-protection")))
+  testImplementation (testFixtures(project(":signing")))
+  testImplementation enforcedPlatform('io.zonky.test.postgres:embedded-postgres-binaries-bom')
+  testImplementation 'io.zonky.test:embedded-postgres'
+  testImplementation 'org.bouncycastle:bcprov-jdk18on'
+
+  testImplementation 'com.azure:azure-identity'
+  testImplementation 'com.azure:azure-security-keyvault-keys'
+  testImplementation 'com.azure:azure-security-keyvault-secrets'
+
+  gatlingImplementation configurations.getByName("testImplementation")
+
+  implementation 'software.amazon.awssdk:auth'
+  implementation 'software.amazon.awssdk:secretsmanager'
+  implementation 'software.amazon.awssdk:kms'
+}
+
+test.enabled = false
+
+task cleanBesuInstall(type: Delete) {
+  delete "$buildDir/besu"
+}
+
+task downloadBesu(type: Download) {
+  src {
+    // see gradle.properties for Besu URL
+    return new SimpleTemplateEngine().createTemplate(besuDistroUrl).make(["besuVersion":"$besuVersion"]).toString()
+  }
+  dest new File(buildDir, "besu-${besuVersion}.tar.gz")
+  onlyIfModified true
+  retries 3
+}
+
+task extractBesu(dependsOn: [
+  'cleanBesuInstall',
+  'downloadBesu'
+], type: Copy) {
+  from(tarTree(downloadBesu.dest)) {
+    include "besu-${besuVersion}/**"
+    eachFile { fcd ->
+      fcd.relativePath = new RelativePath(true, fcd.relativePath.segments.drop(1))
+    }
+    includeEmptyDirs = false
+  }
+  into "$buildDir/besu"
+}
+
+def vaultBinary () {
+  switch (osdetector.os) {
+    case "windows":
+      return new File(buildDir, "vault.exe").toString()
+    default:
+      return new File(buildDir, "vault").toString()
+  }
+}
+
+def getOsXArchForVault() {
+  switch(osdetector.arch) {
+    case "aarch_64":
+      "arm64"
+      break
+    default: "amd64"
+  }
+}
+
+def vaultDownloadUrl() {
+  // see gradle.properties for Hashicorp Vault URL
+  switch (osdetector.os) {
+    case "windows":
+      return "${hashicorpVaultUrl}/${hashicorpVaultVersion}/vault_${hashicorpVaultVersion}_windows_amd64.zip"
+      break
+    case "linux":
+      return "${hashicorpVaultUrl}/${hashicorpVaultVersion}/vault_${hashicorpVaultVersion}_linux_amd64.zip"
+      break
+    case "osx":
+      return "${hashicorpVaultUrl}/${hashicorpVaultVersion}/vault_${hashicorpVaultVersion}_darwin_${getOsXArchForVault()}.zip"
+      break
+  }
+}
+
+task downloadVault(type: Download) {
+  src {
+    return vaultDownloadUrl()
+  }
+  dest new File(buildDir, "hashicorp.zip")
+  onlyIfModified true
+}
+
+task extractVault(dependsOn: downloadVault, type: Copy) {
+  from zipTree(downloadVault.dest)
+  into buildDir
+}
+
+task acceptanceTest(dependsOn: [
+  rootProject.installDist,
+  extractBesu,
+  extractVault
+], type: Test) {
+  inputs.property "integration.date", LocalTime.now() // so it runs at every invocation
+
+  mustRunAfter rootProject.subprojects*.test
+  description = 'Runs Web3Signer acceptance tests.'
+  group = 'verification'
+
+  //systemProperty 'debugSubProcess', 'true'
+  systemProperty 'acctests.runWeb3SignerAsProcess', 'true'
+  systemProperty 'besuInstallDir', "${buildDir}/besu"
+  systemProperty 'vaultBinary', vaultBinary()
+  // embedded pg initdb needs following
+  environment "LC_CTYPE", "en_US.UTF-8"
+  environment "LC_ALL", "en_US.UTF-8"
+
+  useJUnitPlatform()
+  // toggle to show standard out and standard error of the test JVM(s) on the console
+  testLogging.showStandardStreams = false
+}

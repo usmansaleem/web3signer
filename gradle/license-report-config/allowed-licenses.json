@@ -1,0 +1,183 @@
+{
+  "allowedLicenses": [
+    {
+      "moduleLicense": "Apache License, Version 2.0",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "BSD Zero Clause License",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "Bouncy Castle Licence",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "CDDL/GPLv2+CE",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "COMMON DEVELOPMENT AND DISTRIBUTION LICENSE (CDDL) Version 1.0",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "COMMON DEVELOPMENT AND DISTRIBUTION LICENSE (CDDL) Version 1.1",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "Creative Commons Legal Code",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "Eclipse Distribution License - v 1.0",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "Eclipse Public License - v 1.0",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "Eclipse Public License - v 2.0",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "MIT License",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "Mozilla Public License, Version 2.0",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "The 2-Clause BSD License",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "The 3-Clause BSD License",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "The BSD License",
+      "moduleName": ".*"
+    },
+    {
+      "moduleLicense": "IAIK of Graz University of Technology License",
+      "moduleName": "org.xipki.iaik:sunpkcs11-wrapper"
+    },
+    {
+      "moduleLicense": "Unicode/ICU License",
+      "moduleName": "com.ibm.icu:icu4j"
+    },
+    {
+      "moduleName": "io.netty:netty-tcnative-classes"
+    },
+    {
+      "moduleName": "org.antlr:ST4"
+    },
+    {
+      "moduleName": "org.reactivestreams:reactive-streams",
+      "moduleLicense": "MIT-0"
+    },
+    {
+      "moduleName": "com.squareup.okio:okio"
+    },
+    {
+      "moduleName": "com.google.re2j:re2j",
+      "moduleLicense": "Go License"
+    }
+  ],
+  "overrideLicenses": [
+    {
+      "moduleName": "com.github.jnr:jnr-posix",
+      "moduleLicense": "Eclipse Public License - v 2.0"
+    },
+    {
+      "moduleName": "io.vertx",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "jakarta.activation:jakarta.activation-api",
+      "moduleLicense": "Eclipse Distribution License - v 1.0"
+    },
+    {
+      "moduleName": "jakarta.xml.bind:jakarta.xml.bind-api",
+      "moduleLicense": "Eclipse Distribution License - v 1.0"
+    },
+    {
+      "moduleName": "jakarta.validation:jakarta.validation-api",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "javax.xml.bind:jaxb-api",
+      "moduleLicense": "COMMON DEVELOPMENT AND DISTRIBUTION LICENSE (CDDL) Version 1.1"
+    },
+    {
+      "moduleName": "net.java.dev.jna",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "org.codehaus.mojo:animal-sniffer-annotations",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "org.codehaus.woodstox:stax2-api",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "org.hdrhistogram:HdrHistogram",
+      "moduleLicense": "The 2-Clause BSD License"
+    },
+    {
+      "moduleName": "org.ow2.asm",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "io.netty:netty-tcnative-classes",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "com.squareup.okio:okio",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "org.antlr:ST4",
+      "moduleLicense": "The BSD License"
+    },
+    {
+      "moduleName": "com.google.protobuf:protobuf-java",
+      "moduleLicense": "The BSD License"
+    },
+    {
+      "moduleName": "com.google.protobuf:protobuf-java-util",
+      "moduleLicense": "The BSD License"
+    },
+    {
+      "moduleName": "org.java-websocket:Java-WebSocket",
+      "moduleLicense": "MIT License"
+    },
+    {
+      "moduleName": "com.google.api:api-common",
+      "moduleLicense": "The BSD License"
+    },
+    {
+      "moduleName": "com.google.api:gax",
+      "moduleLicense": "The BSD License"
+    },
+    {
+      "moduleName": "com.google.api:gax-grpc",
+      "moduleLicense": "The BSD License"
+    },
+    {
+      "moduleName": "com.google.api:gax-httpjson",
+      "moduleLicense": "The BSD License"
+    },
+    {
+      "moduleName": "com.google.cloud:libraries-bom",
+      "moduleLicense": "Apache License, Version 2.0"
+    },
+    {
+      "moduleName": "com.google.errorprone:error_prone_annotations",
+      "moduleLicense": "Apache License, Version 2.0"
+    }
+  ]
+}

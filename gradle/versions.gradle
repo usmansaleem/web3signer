@@ -1,0 +1,263 @@
+/*
+ * Copyright 2018 ConsenSys AG.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+ * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
+dependencyManagement {
+  dependencies {
+    dependency 'com.fasterxml.jackson.core:jackson-databind:2.16.0'
+    dependency 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.16.0'
+
+    dependencySet(group: 'com.google.errorprone', version: '2.21.1') {
+      entry 'error_prone_annotation'
+      entry 'error_prone_check_api'
+      entry 'error_prone_core'
+      entry 'error_prone_test_helpers'
+    }
+
+    dependency 'tech.pegasys.tools.epchecks:errorprone-checks:1.1.1'
+
+    dependency 'com.google.guava:guava:33.1.0-jre'
+
+    dependency 'commons-cli:commons-cli:1.5.0'
+    dependency 'commons-io:commons-io:2.11.0'
+    dependency 'org.apache.commons:commons-lang3:3.12.0'
+    dependency 'commons-logging:commons-logging:1.3.1'
+
+    dependency 'info.picocli:picocli:4.6.2'
+
+    dependencySet(group: 'io.vertx', version: '4.5.7') {
+      entry 'vertx-codegen'
+      entry ('vertx-core') {
+        exclude group: 'io.netty', name: 'netty-handler'
+      }
+      entry 'vertx-unit'
+      entry 'vertx-web-client'
+      entry 'vertx-web'
+      entry 'vertx-junit5'
+      entry 'vertx-health-check'
+    }
+
+    dependency 'javax.activation:activation:1.1.1'
+
+    dependencySet(group: 'org.apache.logging.log4j', version: '2.20.0') {
+      entry 'log4j-api'
+      entry 'log4j'
+      entry 'log4j-core'
+      entry 'log4j-slf4j2-impl'
+    }
+
+    dependencySet(group: 'org.apache.tuweni', version: '2.3.1') {
+      entry 'tuweni-net'
+      entry 'tuweni-bytes'
+      entry 'tuweni-crypto'
+      entry 'tuweni-units'
+      entry 'tuweni-io'
+    }
+
+    dependency 'org.assertj:assertj-core:3.22.0'
+
+    dependency 'org.awaitility:awaitility:4.1.1'
+
+    dependencySet(group: 'org.bouncycastle', version: '1.78') {
+      entry 'bcpkix-jdk18on'
+      entry 'bcprov-jdk18on'
+    }
+
+    dependencySet(group: 'org.junit.jupiter', version: '5.8.2') {
+      entry 'junit-jupiter-api'
+      entry 'junit-jupiter-engine'
+      entry 'junit-jupiter-params'
+    }
+
+    dependency 'org.mock-server:mockserver-netty:5.15.0'
+
+    dependencySet(group: 'org.mockito', version: '4.2.0') {
+      entry 'mockito-core'
+      entry 'mockito-inline'
+      entry 'mockito-junit-jupiter'
+    }
+
+    dependency 'org.hyperledger.besu:plugin-api:24.1.2'
+    dependency 'org.hyperledger.besu.internal:metrics-core:24.1.2'
+
+    dependency 'org.xipki.iaik:sunpkcs11-wrapper:1.4.10'
+
+    dependencySet(group: 'tech.pegasys.teku.internal', version: '24.3.1') {
+      entry ('bls') {
+        exclude group: 'org.bouncycastle', name: 'bcprov-jdk15on'
+      }
+      entry ('bls-keystore') {
+        exclude group: 'org.bouncycastle', name: 'bcprov-jdk15on'
+      }
+      entry ('spec') {
+        exclude group: 'org.bouncycastle', name: 'bcprov-jdk15on'
+      }
+      entry 'serializer'
+      entry 'unsigned'
+      entry 'async'
+      entry 'networks'
+      entry 'json'
+      entry 'jackson'
+    }
+
+    dependency 'tech.pegasys:jblst:0.3.8'
+
+    dependency 'io.rest-assured:rest-assured:5.4.0'
+    dependency 'org.zeroturnaround:zt-exec:1.12'
+    dependencySet(group: 'org.web3j', version: '4.10.2') {
+      entry 'besu'
+      entry ('core') {
+        exclude group: 'com.github.jnr', name: 'jnr-unixsocket'
+        exclude group: 'org.bouncycastle', name: 'bcprov-jdk15on'
+      }
+      entry ('crypto') {
+        exclude group: 'org.bouncycastle', name: 'bcprov-jdk15on'
+      }
+    }
+
+    dependency 'com.github.arteam:simple-json-rpc-server:1.3'
+    dependency 'com.github.arteam:simple-json-rpc-client:1.3'
+
+    dependencySet(group: 'com.azure', version: '4.8.0') {
+      entry 'azure-security-keyvault-secrets'
+      entry 'azure-security-keyvault-keys'
+    }
+    dependency 'com.azure:azure-identity:1.11.4'
+
+    dependency 'com.zaxxer:HikariCP:5.0.1'
+    dependency 'org.postgresql:postgresql:42.7.2'
+
+    dependencySet(group: 'org.jdbi', version: '3.36.0') {
+      entry 'jdbi3-core'
+      entry 'jdbi3-sqlobject'
+      entry 'jdbi3-testing'
+    }
+
+    dependency 'org.flywaydb:flyway-core:6.1.1'
+
+    dependency 'com.google.cloud:google-cloud-secretmanager:2.41.0'
+    /*
+      org.threeten:threetenbp:1.6.8 //CVE-2024-23082, CVE-2024-23081
+      \--- com.google.cloud:google-cloud-secretmanager:2.41.0
+     */
+    dependency 'org.threeten:threetenbp:1.6.9'
+    dependency 'io.zonky.test.postgres:embedded-postgres-binaries-bom:11.19.0'
+    dependency 'io.zonky.test:embedded-postgres:2.0.3'
+
+    dependency 'com.github.ipld:java-cid:1.3.3'
+    dependency 'net.jodah:failsafe:2.4.4'
+
+    dependencySet(group: 'software.amazon.awssdk', version: '2.20.101') {
+      entry 'bom'
+      entry 'auth'
+      entry 'secretsmanager'
+      entry 'sts'
+      entry 'kms'
+    }
+
+    dependency 'io.rest-assured:rest-assured:4.4.0'
+
+    /*
+      com.squareup.okhttp3:logging-interceptor:4.9.0 // CVE-2021-0341
+      \--- org.web3j:core:4.9.2
+     */
+    dependency 'com.squareup.okhttp3:logging-interceptor:4.11.0'
+
+    dependencySet(group: 'com.squareup.okhttp3', version: '4.11.0') {
+      entry 'okhttp'
+      entry 'mockwebserver'
+    }
+
+    // addresses CVE-2023-3635
+    dependency 'com.squareup.okio:okio:3.4.0'
+
+    // addressing CVE-2023-44487
+    dependencySet(group: 'io.netty', version: '4.1.101.Final') {
+      entry 'netty-all'
+      entry 'netty-codec-http2'
+      entry 'netty-handler'
+      entry 'netty-handler-proxy'
+      entry 'netty-resolver-dns'
+      entry 'netty-transport'
+      entry 'netty-transport-classes-epoll'
+      entry 'netty-transport-classes-kqueue'
+      entry 'netty-transport-native-epoll'
+      entry 'netty-transport-native-kqueue'
+      entry 'netty-resolver-dns-native-macos'
+    }
+
+    /* io.projectreactor.netty:reactor-netty-http:1.0.38 -> 1.0.39 // CVE-2023-34062
+       \--- com.azure:azure-core-http-netty:1.13.10
+            +--- com.azure:azure-security-keyvault-keys:4.7.1 (requested com.azure:azure-core-http-netty:1.13.9)
+            +--- com.azure:azure-identity:1.11.0
+            \--- com.azure:azure-security-keyvault-secrets:4.7.1 (requested com.azure:azure-core-http-netty:1.13.9)
+     */
+    dependency 'io.projectreactor.netty:reactor-netty-http:1.0.39'
+
+    // manual overriding of commons-net to avoid CVE-2021-37533
+    /* commons-net:commons-net:3.8.0
+       \-- org.apache.tuweni:tuweni-net:2.3.1
+     */
+    dependency 'commons-net:commons-net:3.9.0'
+
+    // manual overriding of json-smart to avoid CVE-2023-1370
+    /*
+     +--- com.azure:azure-identity -> 1.8.1
+     |    +--- com.microsoft.azure:msal4j:1.13.5
+     |    |    +--- com.nimbusds:oauth2-oidc-sdk:9.35
+     |    |    |    +--- net.minidev:json-smart:[1.3.3,2.4.8] -> 2.4.8
+     |    |    +--- net.minidev:json-smart:2.4.8 (*)
+     */
+
+    dependency 'net.minidev:json-smart:2.4.10'
+
+    // manual overriding of nimbus-jose-jwt to avoid CVE-2023-52428
+    /*
+    com.nimbusds:nimbus-jose-jwt:9.30.2 -> 9.31
+    \--- com.nimbusds:oauth2-oidc-sdk:10.7.1
+         \--- com.microsoft.azure:msal4j:1.14.0
+              +--- com.azure:azure-identity:1.11.1
+     */
+    dependency 'com.nimbusds:nimbus-jose-jwt:9.37.3'
+
+    // besu 23.10.1 uses grpc 1.53.0 so vulnerable to
+    // CVE-2023-32731, CVE-2023-33953, CVE-2023-44487, CVE-2023-4785
+    dependencySet(group: 'io.grpc', version: '1.59.1') {
+      entry 'grpc-all'
+      entry 'grpc-core'
+      entry 'grpc-netty'
+      entry 'grpc-stub'
+      entry 'grpc-alts'
+      entry 'grpc-api'
+      entry 'grpc-auth'
+      entry 'grpc-context'
+      entry 'grpc-googleapis'
+      entry 'grpc-grpclb'
+      entry 'grpc-inprocess'
+      entry 'grpc-netty-shaded'
+      entry 'grpc-protobuf'
+      entry 'grpc-protobuf-lite'
+      entry 'grpc-services'
+      entry 'grpc-xds'
+    }
+
+    // used in tests to assert log message
+    dependency 'de.neuland-bfi:assertj-logging-log4j:0.5.0'
+
+    // addresses CVE-2023-4759
+    /*
+         +--- com.google.errorprone:error_prone_check_api:2.11.0
+          |    +--- io.github.java-diff-utils:java-diff-utils:4.0
+     */
+    dependency 'io.github.java-diff-utils:java-diff-utils:4.12'
+  }
+}

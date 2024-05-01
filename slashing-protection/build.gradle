@@ -1,0 +1,73 @@
+
+apply plugin: 'java-library'
+apply plugin: 'java-test-fixtures'
+
+jar {
+  archiveBaseName = 'web3signer-slashing-protection'
+  manifest {
+    attributes(
+      'Specification-Title': archiveBaseName,
+      'Specification-Version': project.version,
+      'Implementation-Title': archiveBaseName,
+      'Implementation-Version': calculateVersion()
+      )
+  }
+}
+
+dependencies {
+  implementation project(':common')
+  implementation project(':signing')
+  implementation 'com.fasterxml.jackson.core:jackson-databind'
+  implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+  implementation 'com.google.guava:guava'
+  implementation 'com.google.guava:guava'
+  implementation 'com.zaxxer:HikariCP'
+  implementation 'commons-io:commons-io'
+  implementation 'net.jodah:failsafe:2.4.0'
+  implementation 'org.apache.commons:commons-lang3'
+  implementation 'org.apache.logging.log4j:log4j-api'
+  implementation 'org.apache.logging.log4j:log4j-core'
+  implementation 'org.apache.tuweni:tuweni-units'
+  implementation 'org.hyperledger.besu.internal:metrics-core'
+  implementation 'org.hyperledger.besu:plugin-api'
+  implementation 'org.jdbi:jdbi3-core'
+  implementation 'org.jdbi:jdbi3-sqlobject'
+  implementation 'org.postgresql:postgresql'
+
+  runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl'
+
+  testImplementation 'org.apache.logging.log4j:log4j-api'
+  testImplementation 'org.apache.logging.log4j:log4j-core'
+  testImplementation 'io.zonky.test:embedded-postgres'
+  testImplementation 'org.assertj:assertj-core'
+  testImplementation 'org.flywaydb:flyway-core'
+  testImplementation 'org.junit.jupiter:junit-jupiter-api'
+  testImplementation 'org.junit.jupiter:junit-jupiter-params'
+  testImplementation 'org.mockito:mockito-junit-jupiter'
+  testImplementation enforcedPlatform('io.zonky.test.postgres:embedded-postgres-binaries-bom')
+  testImplementation (testFixtures(project(":signing")))
+
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.7.0'
+
+  testFixturesImplementation 'com.fasterxml.jackson.core:jackson-databind'
+  testFixturesImplementation 'io.zonky.test:embedded-postgres'
+  testFixturesImplementation 'org.apache.commons:commons-lang3'
+  testFixturesImplementation 'org.apache.logging.log4j:log4j-api'
+  testFixturesImplementation 'org.apache.logging.log4j:log4j-core'
+  testFixturesImplementation 'org.flywaydb:flyway-core'
+  testFixturesImplementation 'org.jdbi:jdbi3-core'
+  testFixturesImplementation 'org.junit.jupiter:junit-jupiter-api'
+  testFixturesImplementation enforcedPlatform('io.zonky.test.postgres:embedded-postgres-binaries-bom')
+
+  integrationTestImplementation 'io.zonky.test:embedded-postgres'
+  integrationTestImplementation 'org.assertj:assertj-core'
+  integrationTestImplementation 'org.awaitility:awaitility'
+  integrationTestImplementation 'org.flywaydb:flyway-core'
+  integrationTestImplementation 'org.junit.jupiter:junit-jupiter-api'
+  integrationTestImplementation 'org.junit.jupiter:junit-jupiter-params'
+  integrationTestImplementation 'org.mockito:mockito-junit-jupiter'
+  integrationTestImplementation enforcedPlatform('io.zonky.test.postgres:embedded-postgres-binaries-bom')
+  integrationTestImplementation sourceSets.testFixtures.output
+  integrationTestRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+}

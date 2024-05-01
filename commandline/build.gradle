@@ -1,0 +1,51 @@
+
+jar {
+  archiveBaseName = 'web3signer-commandline'
+  manifest {
+    attributes(
+      'Specification-Title': archiveBaseName,
+      'Specification-Version': project.version,
+      'Implementation-Title': archiveBaseName,
+      'Implementation-Version': calculateVersion()
+      )
+  }
+}
+
+dependencies {
+
+  implementation project(":common")
+  implementation project(":core")
+  implementation project(":slashing-protection")
+  implementation project(":signing")
+  implementation 'info.picocli:picocli'
+  implementation 'com.google.guava:guava'
+  implementation 'org.apache.logging.log4j:log4j-api'
+  implementation 'org.apache.logging.log4j:log4j-core'
+  implementation 'org.hyperledger.besu:plugin-api'
+  implementation 'org.hyperledger.besu.internal:metrics-core'
+  implementation 'com.fasterxml.jackson.core:jackson-databind'
+  implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+  implementation 'org.apache.commons:commons-lang3'
+  implementation 'org.jdbi:jdbi3-core'
+  implementation 'org.jdbi:jdbi3-sqlobject'
+
+  implementation 'tech.pegasys.teku.internal:spec'
+  implementation 'tech.pegasys.teku.internal:unsigned'
+  implementation 'tech.pegasys.teku.internal:networks'
+  implementation 'tech.pegasys.teku.internal:json'
+  implementation 'tech.pegasys.teku.internal:jackson'
+
+  runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl'
+
+  testImplementation 'org.junit.jupiter:junit-jupiter-api'
+  testImplementation 'org.assertj:assertj-core'
+  testImplementation 'org.mockito:mockito-junit-jupiter'
+  testImplementation 'org.junit.jupiter:junit-jupiter-params'
+  testImplementation 'io.vertx:vertx-web'
+
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+}
+
+artifacts {
+  testSupportArtifacts testSupportJar
+}
