@@ -2,6 +2,7 @@
 
 ## Upcoming Release
 ### Features Added
+- Signing support for the upcoming Glamsterdam (GLOAS / ePBS) fork, matching [remote-signing-api v1.4.0](https://github.com/ethereum/remote-signing-api/releases/tag/v1.4.0). [#1192][PR_1192]
 - Azure Key Vault connections are now cached per credential/vault set instead of rebuilt on every key load, reducing bulk-load time. [#1222][PR_1222]
 
 ### Bugs Fixed
@@ -12,6 +13,7 @@
 - Azure Key Vault acceptance tests now run against local Azure emulator instance instead of live Azure.
 
 [PR_1222]: https://github.com/Consensys-Incorporated/web3signer/pull/1222/changes
+[PR_1192]: https://github.com/Consensys-Incorporated/web3signer/pull/1192
 
 ---
 ## 26.7.0
