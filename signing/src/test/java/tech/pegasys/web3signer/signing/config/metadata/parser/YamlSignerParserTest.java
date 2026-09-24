@@ -242,7 +242,8 @@ class YamlSignerParserTest {
 
     Assertions.assertThatThrownBy(
             () -> signerParser.parse(signerParser.readSigningMetadata(yamlMetadata)))
-        .hasRootCauseMessage("Provider \"https\" not installed");
+        .rootCause()
+        .hasMessageContaining("scheme 'https' not allowed for Path deserialization");
   }
 
   @Test
