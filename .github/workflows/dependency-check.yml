@@ -76,10 +76,12 @@ jobs:
           MAX_AGE_HOURS: '48'
         run: |
           LAST_MODIFIED=$(jq -r '.scanInfo.dataSource[] | select(.name == "NVD API Last Modified") | .timestamp' "$REPORT")
-          AGE_HOURS=$(( ($(date -u +%s) - $(date -u -d "$LAST_MODIFIED" +%s)) / 3600 ))
-          echo "NVD data last modified at $LAST_MODIFIED (${AGE_HOURS}h ago)"
-          if [ "$AGE_HOURS" -gt "$MAX_AGE_HOURS" ]; then
-            echo "::error::NVD data is ${AGE_HOURS}h old (limit ${MAX_AGE_HOURS}h); the database is not being updated."
+          AGE_SECONDS=$(( $(date -u +%s) - $(date -u -d "$LAST_MODIFIED" +%s) ))
+          AGE="$(( AGE_SECONDS / 3600 ))h$(( (AGE_SECONDS % 3600) / 60 ))m"
+          echo "NVD data last modified at $LAST_MODIFIED (${AGE} ago)"
+          # Compare seconds, not whole hours: truncating would let a 48h30m old database pass a 48h limit.
+          if [ "$AGE_SECONDS" -gt "$(( MAX_AGE_HOURS * 3600 ))" ]; then
+            echo "::error::NVD data is ${AGE} old (limit ${MAX_AGE_HOURS}h); the database is not being updated."
             exit 1
           fi
 
