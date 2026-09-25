@@ -19,6 +19,7 @@
 
 ### CI/Build Enhancements
 - Azure Key Vault acceptance tests now run against local Azure emulator instance instead of live Azure.
+- OWASP dependency-check runs nightly again, scanning only the dependencies shipped in the distribution (`runtimeClasspath`) and publishing findings to GitHub code scanning. The NVD database is cached between runs and rebuilt weekly; the run fails if the NVD data is more than 48 hours old. Stale suppressions were removed and current false positives documented.
 
 ### Security
 - Docker base images re-pinned to their current multi-platform index digests. [#1230][PR_1230]
