@@ -19,7 +19,6 @@ import tech.pegasys.web3signer.core.service.http.handlers.signing.SigningExtensi
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.json.JsonObject;
 
 public class Eth2SignExtensionRoute implements Web3SignerRoute {
   public static final String SIGN_EXT_PATH = "/api/v1/eth2/ext/sign/:identifier";
@@ -48,22 +47,6 @@ public class Eth2SignExtensionRoute implements Web3SignerRoute {
     context
         .getRouter()
         .route(HttpMethod.POST, SIGN_EXT_PATH)
-        .blockingHandler(new SigningExtensionHandler(blsSigner), false)
-        .failureHandler(context.getErrorHandler())
-        .failureHandler(
-            ctx -> {
-              final int statusCode = ctx.statusCode();
-              if (statusCode == 400) {
-                ctx.response()
-                    .setStatusCode(statusCode)
-                    .end(new JsonObject().put("error", "Bad Request").encode());
-              } else if (statusCode == 404) {
-                ctx.response()
-                    .setStatusCode(statusCode)
-                    .end(new JsonObject().put("error", "Identifier not found.").encode());
-              } else {
-                ctx.next(); // go to global failure handler
-              }
-            });
+        .blockingHandler(new SigningExtensionHandler(blsSigner), false);
   }
 }

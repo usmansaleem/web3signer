@@ -12,8 +12,6 @@
  */
 package tech.pegasys.web3signer.core.routes.eth2;
 
-import static java.net.HttpURLConnection.HTTP_INTERNAL_ERROR;
-
 import tech.pegasys.web3signer.core.Context;
 import tech.pegasys.web3signer.core.routes.Web3SignerRoute;
 import tech.pegasys.web3signer.core.service.http.handlers.commitboost.CommitBoostPublicKeysHandler;
@@ -21,7 +19,6 @@ import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider;
 
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.json.JsonObject;
 
 public class CommitBoostPublicKeysRoute implements Web3SignerRoute {
   private static final String PATH = "/signer/v1/get_pubkeys";
@@ -44,22 +41,6 @@ public class CommitBoostPublicKeysRoute implements Web3SignerRoute {
         .getRouter()
         .route(HttpMethod.GET, PATH)
         .produces(JSON_HEADER)
-        .blockingHandler(new CommitBoostPublicKeysHandler(artifactSignerProvider), false)
-        .failureHandler(context.getErrorHandler())
-        .failureHandler(
-            ctx -> {
-              final int statusCode = ctx.statusCode();
-              if (statusCode == HTTP_INTERNAL_ERROR) {
-                ctx.response()
-                    .setStatusCode(statusCode)
-                    .end(
-                        new JsonObject()
-                            .put("code", statusCode)
-                            .put("message", "Internal Error")
-                            .encode());
-              } else {
-                ctx.next(); // go to global failure handler
-              }
-            });
+        .blockingHandler(new CommitBoostPublicKeysHandler(artifactSignerProvider), false);
   }
 }

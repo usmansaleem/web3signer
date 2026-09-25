@@ -22,7 +22,7 @@ import tech.pegasys.web3signer.core.config.MetricsPushOptions;
 import tech.pegasys.web3signer.core.config.TlsOptions;
 import tech.pegasys.web3signer.core.metrics.vertx.VertxMetricsAdapterFactory;
 import tech.pegasys.web3signer.core.service.http.HostAllowListHandler;
-import tech.pegasys.web3signer.core.service.http.handlers.LogErrorHandler;
+import tech.pegasys.web3signer.core.service.http.handlers.JsonErrorHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.UpcheckHandler;
 import tech.pegasys.web3signer.core.util.FileUtil;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
@@ -37,11 +37,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.vertx.core.Handler;
@@ -80,6 +82,16 @@ public abstract class Runner implements Runnable, AutoCloseable {
 
   private static final Logger LOG = LogManager.getLogger();
 
+  /**
+   * Status codes left to Vert.x's default no-match handling instead of {@link JsonErrorHandler}:
+   * Vert.x only emits the RFC 9110 {@code Allow} (405) / {@code Accept} (415) headers when no error
+   * handler is registered for that code. {@code Router.uncaughtErrorHandler} is not used: it is
+   * also picked for 405/415 (suppressing those headers), the allowed methods / content types are
+   * not exposed by {@code RoutingContext} to rebuild them, and its contract forbids {@code
+   * ctx.next()}.
+   */
+  private static final Set<Integer> VERTX_DEFAULT_ERROR_STATUS_CODES = Set.of(405, 415);
+
   protected final BaseConfig baseConfig;
 
   private HealthCheckHandler healthCheckHandler;
@@ -102,7 +114,7 @@ public abstract class Runner implements Runnable, AutoCloseable {
             .build();
     final Router router = Router.router(vertx);
 
-    final LogErrorHandler errorHandler = new LogErrorHandler();
+    registerJsonErrorHandlers(router);
     healthCheckHandler = HealthCheckHandler.create(vertx);
     try {
       final List<ArtifactSignerProvider> artifactSignerProviders =
@@ -147,12 +159,9 @@ public abstract class Runner implements Runnable, AutoCloseable {
        BodyHandler must be first handler after platform and security handlers
       */
       router.route().handler(BodyHandler.create());
-      registerUpcheckRoute(router, errorHandler);
+      registerUpcheckRoute(router);
 
-      router
-          .route(HttpMethod.GET, HEALTHCHECK_PATH)
-          .handler(healthCheckHandler)
-          .failureHandler(errorHandler);
+      router.route(HttpMethod.GET, HEALTHCHECK_PATH).handler(healthCheckHandler);
 
       registerHealthCheckProcedure(DEFAULT_CHECK, promise -> promise.complete(Status.OK()));
 
@@ -169,13 +178,7 @@ public abstract class Runner implements Runnable, AutoCloseable {
       registerClose(reloadWorkerExecutor::close);
 
       final Context context =
-          new Context(
-              router,
-              metricsSystem,
-              errorHandler,
-              vertx,
-              artifactSignerProviders,
-              reloadWorkerExecutor);
+          new Context(router, metricsSystem, vertx, artifactSignerProviders, reloadWorkerExecutor);
 
       populateRouter(context);
 
@@ -202,6 +205,17 @@ public abstract class Runner implements Runnable, AutoCloseable {
       LOG.error("Failed to initialise application", e);
       throw new InitializationException(e);
     }
+  }
+
+  /**
+   * Renders every 4xx/5xx routing failure as a JSON error body, except {@link
+   * #VERTX_DEFAULT_ERROR_STATUS_CODES}.
+   */
+  static void registerJsonErrorHandlers(final Router router) {
+    final JsonErrorHandler jsonErrorHandler = new JsonErrorHandler();
+    IntStream.rangeClosed(400, 599)
+        .filter(statusCode -> !VERTX_DEFAULT_ERROR_STATUS_CODES.contains(statusCode))
+        .forEach(statusCode -> router.errorHandler(statusCode, jsonErrorHandler));
   }
 
   private void shutdownVertx(final Vertx vertx) {
@@ -254,12 +268,8 @@ public abstract class Runner implements Runnable, AutoCloseable {
 
   protected abstract void populateRouter(final Context context);
 
-  private void registerUpcheckRoute(final Router router, final LogErrorHandler errorHandler) {
-    router
-        .route(HttpMethod.GET, UPCHECK_PATH)
-        .produces(TEXT_PLAIN)
-        .handler(new UpcheckHandler())
-        .failureHandler(errorHandler);
+  private void registerUpcheckRoute(final Router router) {
+    router.route(HttpMethod.GET, UPCHECK_PATH).produces(TEXT_PLAIN).handler(new UpcheckHandler());
   }
 
   protected void registerHealthCheckProcedure(
