@@ -16,6 +16,7 @@ import tech.pegasys.web3signer.slashingprotection.DbConnection;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.Duration;
 
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import org.flywaydb.core.Flyway;
@@ -28,9 +29,18 @@ public class DatabaseUtil {
   public static final String PASSWORD = "postgres";
   public static final boolean DB_CONNECTION_POOL_ENABLED = true;
 
+  /**
+   * Starting an embedded Postgres cluster runs initdb and then waits for the server to accept
+   * connections. The default 10 seconds is not enough when several test forks start their clusters
+   * at the same time, particularly on macOS where the initial start also extracts the Postgres
+   * binaries.
+   */
+  private static final Duration PG_STARTUP_WAIT = Duration.ofMinutes(2);
+
   public static TestDatabaseInfo create() {
     try {
-      final EmbeddedPostgres db = EmbeddedPostgres.start();
+      final EmbeddedPostgres db =
+          EmbeddedPostgres.builder().setPGStartupWait(PG_STARTUP_WAIT).start();
       final Flyway flyway =
           Flyway.configure()
               .locations("/migrations/postgresql/")

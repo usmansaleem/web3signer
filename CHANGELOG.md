@@ -18,6 +18,7 @@
 - `POST /reload` responses now use the shared `{"code": <status>, "message": "..."}` body: `202` returns `"code": 202` instead of `"status": "accepted"`, and `409` returns `"code": 409` instead of `"status": "error"`. `GET /reload` is unchanged. [#1235][PR_1235]
 
 ### CI/Build Enhancements
+- Tests that start an embedded Postgres cluster now allow up to 2 minutes for it to accept connections instead of 10 seconds, which removes the `Gave up waiting for server to start` failures when several test forks start their cluster at the same time (most visible on macOS). [#1241][PR_1241]
 - Azure Key Vault acceptance tests now run against local Azure emulator instance instead of live Azure.
 - OWASP dependency-check runs nightly again, scanning only the dependencies shipped in the distribution (`runtimeClasspath`) and publishing findings to GitHub code scanning. The NVD database is cached between runs and rebuilt weekly; the run fails if the NVD data is more than 48 hours old. Stale suppressions were removed and current false positives documented. [#1237][PR_1237]
 
@@ -25,6 +26,7 @@
 - Docker base images re-pinned to their current multi-platform index digests. [#1230][PR_1230]
 - Default image ships `ubuntu:26.04` + Eclipse Temurin JRE 25.0.4; distroless image ships Java 25.0.4 on `gcr.io/distroless/java25-debian13:nonroot`. [#1230][PR_1230]
 
+[PR_1241]: https://github.com/Consensys-Incorporated/web3signer/pull/1241
 [PR_1222]: https://github.com/Consensys-Incorporated/web3signer/pull/1222
 [PR_1228]: https://github.com/Consensys-Incorporated/web3signer/pull/1228
 [PR_1230]: https://github.com/Consensys-Incorporated/web3signer/pull/1230
