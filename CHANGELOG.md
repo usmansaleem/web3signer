@@ -1,6 +1,6 @@
 # Changelog
 
-## Upcoming Release
+## 26.9.0
 ### Features Added
 - Scheduled the Glamsterdam (Gloas) upgrade on Sepolia for epoch 353024 (October 6, 2026 13:53:36 UTC). [#1240][PR_1240]
 - Signing support for the upcoming Glamsterdam (GLOAS / ePBS) fork, matching [remote-signing-api v1.4.0](https://github.com/ethereum/remote-signing-api/releases/tag/v1.4.0). [#1192][PR_1192]
