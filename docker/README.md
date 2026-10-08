@@ -34,7 +34,7 @@ docker run --rm -it web3signer:develop-distroless --version
 
 ### Docker only (no local Java)
 
-Omit `TAR_FILE` and the Dockerfile builds the distribution inside Docker with `./gradlew distTar` (Temurin JDK build stage; the Gradle cache is kept in a BuildKit cache mount). This requires BuildKit (the default since Docker 23) and network access to Maven Central and the Gradle plugin portal. Build from a git checkout so the version is correct; without `.git` the version reports `develop`/`UNKNOWN`.
+Omit `TAR_FILE` and the Dockerfile builds the distribution inside Docker with `./gradlew distTar` (Temurin JDK build stage; the Gradle cache is kept in a BuildKit cache mount). This requires BuildKit (the default since Docker 23) and network access to Maven Central and the Gradle plugin portal. Build from a git checkout so the version is correct; without `.git` the version reports `UNKNOWN+develop`.
 
 ```sh
 docker build -f ./docker/Dockerfile -t web3signer:local .
@@ -60,7 +60,7 @@ Then run `docker compose up --build`.
 
 #### Building straight from GitHub (no clone)
 
-The build context can be a remote git URL. The URL must end in `.git` before the `#<ref>` fragment, and the ref must contain the Dockerfile change that makes `TAR_FILE` optional. Set `BUILDKIT_CONTEXT_KEEP_GIT_DIR=1` so `.git` is kept and the image reports the right version: on a release tag it reports the tag (e.g. `26.9.0`), on a branch it reports the branch name, and without the argument it reports `UNKNOWN+develop`. Prefer a release tag.
+The build context can be a remote git URL. The URL must end in `.git` before the `#<ref>` fragment, and the ref must contain the Dockerfile change that makes `TAR_FILE` optional. Set `BUILDKIT_CONTEXT_KEEP_GIT_DIR=1` so `.git` is kept and the version comes from `git describe --tags`: a release tag reports the tag (e.g. `26.9.0`), any other ref reports the nearest tag plus commit suffix (e.g. `26.9.0+3-gabc1234`), or `UNKNOWN+g<hash>` if no tag is reachable. Without the argument it reports `UNKNOWN+develop`. Prefer a release tag.
 
 ```sh
 docker build --build-arg BUILDKIT_CONTEXT_KEEP_GIT_DIR=1 \
