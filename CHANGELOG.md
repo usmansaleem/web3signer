@@ -2,6 +2,7 @@
 
 ## Unreleased
 ### Features Added
+- Docker images can now be built without a local Java install: when the `TAR_FILE` build argument is omitted, `docker/Dockerfile` and `docker/Dockerfile.distroless` build the distribution from source inside Docker. Building from a pre-built `TAR_FILE` remains the recommended path. See `docker/README.md`.
 
 ### Bugs Fixed
 
