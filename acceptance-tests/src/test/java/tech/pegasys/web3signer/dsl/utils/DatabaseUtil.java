@@ -87,6 +87,14 @@ public class DatabaseUtil {
     perTestDatabase = null;
   }
 
+  /**
+   * Returns a database that is never memoized, so no other test can be handed it: for tests that
+   * modify the schema and must not corrupt the database the rest of the JVM shares.
+   */
+  public static synchronized TestDatabaseInfo createIsolated() {
+    return createDatabase();
+  }
+
   private static TestDatabaseInfo createDatabase() {
     final PreparedDbProvider provider = databaseProvider();
     try {
