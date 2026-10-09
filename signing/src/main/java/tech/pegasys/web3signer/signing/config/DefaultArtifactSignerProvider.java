@@ -128,7 +128,9 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    * <p><b>Error Handling:</b> Individual signer loading failures are counted but do not prevent
    * loading of other valid signers. Signers missing from an errored load are retained, so a
    * transient failure cannot remove them from slashing protection; the next error-free load drops
-   * keys that are genuinely gone.
+   * keys that are genuinely gone. Errors are counted, not attributed to a source or file, so while
+   * any load error persists (even a single malformed file in the same directory) a key removed from
+   * its source stays loaded; use the key manager delete API to remove a key immediately.
    *
    * <p>This method is typically invoked:
    *
