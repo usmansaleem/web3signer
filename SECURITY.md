@@ -99,17 +99,6 @@ model, not by raw CVSS score alone.
 If you are unsure whether something qualifies, report it privately and we will decide during
 triage.
 
-## Good-faith research
-
-Consensys will not pursue or support legal action against researchers who act in good faith and in
-accordance with this policy and the organization policy. In particular, please:
-
-- Only access, modify, or store data that is your own or that you have explicit permission to test
-  with. Never test against keys or validators that you do not own.
-- Avoid privacy violations, data destruction, and degradation or disruption of services.
-- Do not use social engineering, phishing, or physical attacks.
-- Stop testing and report immediately if you encounter personal or otherwise sensitive data.
-
 ## Other notes
 
 - Report vulnerabilities in third-party dependencies to their maintainers, unless Web3Signer's use
