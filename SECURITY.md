@@ -30,7 +30,8 @@ Do not report security issues through public issues, pull requests, or discussio
 - We agree a coordinated disclosure timeline with you, and move faster for issues being actively
   exploited.
 - We credit reporters who wish to be named, in the published advisory.
-- Confirmed issues are published as GitHub Security Advisories, with a CVE where appropriate.
+- Confirmed security issues are published as GitHub Security Advisories, with a CVE where
+  appropriate. Hardening reports may be published as informational advisories without a CVE.
 
 ## Supported versions
 
@@ -90,9 +91,9 @@ by design are generally treated as hardening, for example:
 - Findings that depend on the operator exposing Web3Signer to an untrusted network.
 
 This does not cover the in-scope issues above. We still welcome these reports and will usually fix
-worthwhile ones as normal improvements, but we may not publish an advisory or CVE for them. When we
-assess severity, we do so in the context of the documented deployment model, not by raw CVSS score
-alone.
+worthwhile ones as normal improvements. We may publish an informational advisory for them, but do
+not request a CVE. When we assess severity, we do so in the context of the documented deployment
+model, not by raw CVSS score alone.
 
 If you are unsure whether something qualifies, report it privately and we will decide during
 triage.
