@@ -27,8 +27,8 @@ Do not report security issues through public issues, pull requests, or discussio
 
 - We acknowledge reports within **5 business days**.
 - We keep you informed through triage and remediation.
-- We agree a coordinated disclosure timeline with you. Our default window is **90 days** from the
-  report, shorter for issues being actively exploited.
+- We agree a coordinated disclosure timeline with you, and move faster for issues being actively
+  exploited.
 - We credit reporters who wish to be named, in the published advisory.
 - Confirmed issues are published as GitHub Security Advisories, with a CVE where appropriate.
 
