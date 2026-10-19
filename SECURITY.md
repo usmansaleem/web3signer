@@ -31,9 +31,8 @@ Do not report security issues through public issues, pull requests, or discussio
 - We agree a coordinated disclosure timeline with you, and move faster for issues being actively
   exploited.
 - We credit reporters who wish to be named, in the published advisory.
-- Confirmed security issues are published as GitHub Security Advisories, with a CVE for security
-  issues as described under [Trust model and scope](#trust-model-and-scope). Hardening reports may
-  be published as informational advisories without a CVE.
+- Confirmed security issues are published as GitHub Security Advisories, with a CVE where
+  appropriate. Hardening reports may be published as informational advisories without a CVE.
 
 ## Supported versions
 
