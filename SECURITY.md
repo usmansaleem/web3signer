@@ -25,9 +25,8 @@ Do not report security issues through public issues, pull requests, or discussio
 
 ## What to expect
 
-- We acknowledge reports within **[3 business days]**.
-- We aim to complete initial triage within **[10 business days]** and will keep you informed
-  through triage and remediation.
+- We acknowledge reports within **5 business days**.
+- We keep you informed through triage and remediation.
 - We agree a coordinated disclosure timeline with you. Our default window is **90 days** from the
   report, shorter for issues being actively exploited.
 - We credit reporters who wish to be named, in the published advisory.
