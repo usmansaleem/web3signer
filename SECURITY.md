@@ -6,12 +6,13 @@ Where the two differ, this document takes precedence for Web3Signer.
 
 ## Reporting a vulnerability
 
-Report vulnerabilities privately, using either:
+Report vulnerabilities privately. We prefer GitHub private vulnerability reporting:
 
-- **GitHub private vulnerability reporting:** open the
+- **GitHub private vulnerability reporting (preferred):** open the
   [Security tab](https://github.com/Consensys-Incorporated/web3signer/security/advisories)
-  and select **Report a vulnerability**, or
-- **Email:** [web3signer-security-report@consensys.com](mailto:web3signer-security-report@consensys.com)
+  and select **Report a vulnerability**.
+- **Email:** [web3signer-security-report@consensys.com](mailto:web3signer-security-report@consensys.com),
+  if you cannot use GitHub.
 
 Do not report security issues through public issues, pull requests, or discussions.
 
