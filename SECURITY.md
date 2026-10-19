@@ -31,70 +31,50 @@ Do not report security issues through public issues, pull requests, or discussio
 - We agree a coordinated disclosure timeline with you, and move faster for issues being actively
   exploited.
 - We credit reporters who wish to be named, in the published advisory.
-- Confirmed security issues are published as GitHub Security Advisories, with a CVE where
-  appropriate. Hardening reports may be published as informational advisories without a CVE.
+- Confirmed security issues are published as GitHub Security Advisories, with a CVE for security
+  issues as described under [Trust model and scope](#trust-model-and-scope). Hardening reports may
+  be published as informational advisories without a CVE.
 
 ## Supported versions
 
 Security fixes are provided for **the latest release only**. Please test against the latest
 release before reporting.
 
-## Threat model and deployment assumptions
+## Trust model and scope
 
-Web3Signer signs with the keys it loads: BLS validator keys in `eth2` mode and SECP256K1 keys in
-`eth1` mode. Please read the
+Web3Signer does not authenticate or authorize API requests. Access must be restricted at the
+network layer (bind address, firewall rules, private networks, mutual TLS, or equivalent), and any
+client that can reach an enabled interface is treated as trusted. Web3Signer must not be exposed
+to untrusted networks. Please read the
 [key best practices](https://docs.web3signer.consensys.com/get-started/key-best-practices)
 before assessing impact.
 
-- **Web3Signer does not authenticate or authorize API requests.** There are no API tokens or
-  per-endpoint permissions on any HTTP interface: signing endpoints, the Key Manager API, the
-  Commit Boost API, the `eth1` JSON-RPC endpoint (including requests it forwards to the
-  execution client), `/reload`, and metrics. Optional
-  [mutual TLS](https://docs.web3signer.consensys.com/how-to/configure-tls) restricts which
-  clients can connect, but a connected client can use every enabled endpoint. The Key Manager
-  API does not check the bearer token described in the Ethereum keymanager API specification.
-- **Access is expected to be restricted at the network layer** (bind address, firewall rules,
-  private networks, or equivalent). Anyone who can reach an enabled interface is treated as
-  trusted. Web3Signer must not be exposed to untrusted networks.
-- **Defaults:** the HTTP API listens on `127.0.0.1:9000`; the Docker images listen on `0.0.0.0`.
-  The Key Manager API (`--key-manager-api-enabled`), the Commit Boost API
-  (`--commit-boost-api-enabled`) and metrics (`--metrics-enabled`) are disabled by default.
-  Slashing protection is enabled by default in `eth2` mode.
+### Security issues
 
-## Scope
+We treat a report as a security issue when it breaks a protection that is meant to hold even for
+a client that can reach the API, or when it remains exploitable in a deployment that follows the
+restrictions above. For example:
 
-### In scope
-
-The following are in scope even when exploiting them requires access to the API:
-
-- Slashing protection bypass or corruption: a slashable block or attestation signed while
-  slashing protection is enabled, or its database corrupted through the API or an interchange
-  import.
-- Exposure or leakage of key material, keystore passwords, keystore contents, or vault and cloud
-  credentials, for example through API responses, errors, logs, or metrics.
-- Forged or unauthorized signatures: signing with a key the request did not identify, over data
-  other than the request describes, or a transaction for a chain ID other than the configured
-  `--chain-id`.
-- Path traversal or arbitrary file read, write, or deletion through API requests (such as Key
-  Manager import and delete, or Commit Boost proxy key generation) or through loaded key data.
+- Disclosure of key material, keystore passwords, or credentials for key stores and cloud
+  services.
+- Slashing protection bypass: signing a slashable message while slashing protection is enabled.
+- Signatures that do not match the request: a different key, different data, or a different chain.
+- Path traversal or arbitrary file access through API requests or loaded key data.
 - Bypass of TLS client authentication.
-- Vulnerabilities that remain exploitable when the deployment follows the documented network
-  restrictions.
-- Reachable vulnerabilities in dependencies that affect Web3Signer's security.
+- Vulnerabilities in dependencies that are reachable in Web3Signer.
 
-### Treated as hardening
+### Hardening
 
 Reports whose only impact is something a client that can reach Web3Signer is already able to do
-by design are generally treated as hardening, for example:
+by design are treated as hardening, for example:
 
 - Missing authentication or authorization on the HTTP interfaces.
 - Resource exhaustion or denial of service by a client that can already reach those interfaces.
-- Findings that depend on the operator exposing Web3Signer to an untrusted network.
+- Findings that depend on exposing Web3Signer to an untrusted network.
 
-This does not cover the in-scope issues above. We still welcome these reports and will usually fix
-worthwhile ones as normal improvements. We may publish an informational advisory for them, but do
-not request a CVE. When we assess severity, we do so in the context of the documented deployment
-model, not by raw CVSS score alone.
+We welcome these reports and will usually fix worthwhile ones as normal improvements. We may
+publish an informational advisory for them, but do not request a CVE. We assess severity in the
+context of this deployment model, not by raw CVSS score alone.
 
 If you are unsure whether something qualifies, report it privately and we will decide during
 triage.
