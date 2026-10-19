@@ -11,7 +11,7 @@ Report vulnerabilities privately, using either:
 - **GitHub private vulnerability reporting:** open the
   [Security tab](https://github.com/Consensys-Incorporated/web3signer/security/advisories)
   and select **Report a vulnerability**, or
-- **Email:** [Security-Report@Consensys.com](mailto:Security-Report@Consensys.com)
+- **Email:** [web3signer-security-report@consensys.com](mailto:web3signer-security-report@consensys.com)
 
 Do not report security issues through public issues, pull requests, or discussions.
 
