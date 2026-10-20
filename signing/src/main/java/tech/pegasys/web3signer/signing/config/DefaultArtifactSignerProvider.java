@@ -34,6 +34,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -80,6 +81,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   private final Supplier<MappedResults<ArtifactSigner>> artifactSignerResultsSupplier;
   private final Optional<BiConsumer<Set<String>, Set<String>>> postLoadingCallback;
   private final Optional<KeystoresParameters> commitBoostKeystoresParameters;
+  private final Consumer<String> signerRemovedListener;
 
   // Volatile references to immutable maps - readers see atomic snapshots
   private volatile SignerState state = new SignerState(Map.of(), Map.of());
@@ -99,9 +101,27 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final Supplier<MappedResults<ArtifactSigner>> artifactSignerResultsSupplier,
       final Optional<BiConsumer<Set<String>, Set<String>>> postLoadingCallback,
       final Optional<KeystoresParameters> commitBoostKeystoresParameters) {
+    this(
+        artifactSignerResultsSupplier,
+        postLoadingCallback,
+        commitBoostKeystoresParameters,
+        identifier -> {});
+  }
+
+  /**
+   * @param signerRemovedListener invoked with the identifier of a signer removed via {@link
+   *     #removeSigner(String)}, on the loading executor, so that loaders can forget it instead of
+   *     re-supplying it after a later failed load
+   */
+  public DefaultArtifactSignerProvider(
+      final Supplier<MappedResults<ArtifactSigner>> artifactSignerResultsSupplier,
+      final Optional<BiConsumer<Set<String>, Set<String>>> postLoadingCallback,
+      final Optional<KeystoresParameters> commitBoostKeystoresParameters,
+      final Consumer<String> signerRemovedListener) {
     this.artifactSignerResultsSupplier = artifactSignerResultsSupplier;
     this.postLoadingCallback = postLoadingCallback;
     this.commitBoostKeystoresParameters = commitBoostKeystoresParameters;
+    this.signerRemovedListener = signerRemovedListener;
   }
 
   /**
@@ -318,6 +338,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           // threads
           this.state = new SignerState(Map.copyOf(newSigners), Map.copyOf(newProxySigners));
 
+          signerRemovedListener.accept(identifier);
           LOG.info("Removed signer with identifier '{}'", identifier);
           return null;
         });

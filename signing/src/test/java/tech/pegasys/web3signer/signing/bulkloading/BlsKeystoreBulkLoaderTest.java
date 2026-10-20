@@ -233,6 +233,26 @@ class BlsKeystoreBulkLoaderTest {
     assertThat(errored.getErrorCount()).isEqualTo(1);
   }
 
+  @Test
+  void evictedKeyIsNotRetainedWhenKeystoreDirectoryBecomesUnreadable(final @TempDir Path tempDir)
+      throws IOException {
+    final Path keystoreDir = Files.createDirectory(tempDir.resolve("keystores"));
+    final Path passwordDir = Files.createDirectory(tempDir.resolve("passwords"));
+    KeystoreUtil.createKeystore(KEY_PAIR_1, keystoreDir, passwordDir, KEYSTORE_PASSWORD_1);
+    KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
+    assertThat(loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir).getValues())
+        .hasSize(2);
+
+    loader.evict(KEY_PAIR_1.getPublicKey().toString());
+    FileUtils.deleteDirectory(keystoreDir.toFile());
+
+    final MappedResults<ArtifactSigner> errored =
+        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    assertThat(errored.getValues()).hasSize(1);
+    assertThatSignerHasPublicKey(errored.getValues(), KEY_PAIR_2);
+    assertThat(errored.getErrorCount()).isEqualTo(1);
+  }
+
   private void assertThatSignerHasPublicKey(
       final Collection<ArtifactSigner> signers, final BLSKeyPair keyPair0) {
     assertThat(signers).anyMatch(s -> s.getIdentifier().equals(keyPair0.getPublicKey().toString()));

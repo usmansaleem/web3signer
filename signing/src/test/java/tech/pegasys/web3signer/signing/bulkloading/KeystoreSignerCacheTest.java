@@ -14,6 +14,7 @@ package tech.pegasys.web3signer.signing.bulkloading;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
@@ -60,6 +61,7 @@ class KeystoreSignerCacheTest {
       return Optional.empty();
     }
     final ArtifactSigner signer = mock(ArtifactSigner.class);
+    when(signer.getIdentifier()).thenReturn(file.getFileName().toString());
     signerByFile.put(file, signer);
     return Optional.of(signer);
   }
@@ -143,6 +145,31 @@ class KeystoreSignerCacheTest {
     loadedFiles.clear();
     load(dir1, a, b);
     assertThat(loadedFiles).containsExactly(a);
+  }
+
+  @Test
+  void evictedSignerIsNotRetainedAfterSourceError() {
+    final MappedResults<ArtifactSigner> first = load(dir1, a, b);
+    assertThat(first.getValues()).hasSize(2);
+
+    cache.evict(a.getFileName().toString());
+
+    final MappedResults<ArtifactSigner> retained = cache.retainAllOnSourceError(dir1);
+    assertThat(retained.getValues()).containsExactly(signerByFile.get(b));
+    assertThat(retained.getErrorCount()).isEqualTo(1);
+  }
+
+  @Test
+  void evictedSignerIsNotRetainedWhenItsFileFailsLater() throws IOException {
+    load(dir1, a, b);
+    cache.evict(a.getFileName().toString());
+
+    failing.add(a);
+    bumpModifiedTime(a);
+    final MappedResults<ArtifactSigner> result = load(dir1, a, b);
+
+    assertThat(result.getValues()).containsExactly(signerByFile.get(b));
+    assertThat(result.getErrorCount()).isEqualTo(1);
   }
 
   @Test

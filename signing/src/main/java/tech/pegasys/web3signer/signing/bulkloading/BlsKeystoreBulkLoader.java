@@ -88,6 +88,17 @@ public class BlsKeystoreBulkLoader {
         keystoreFile -> createSignerForKeystore(keystoreFile, keystorePassword -> password));
   }
 
+  /**
+   * Forgets the previously loaded key with the given identifier, so that it is not re-supplied when
+   * a later load fails. Called when the key was removed at runtime (e.g. via the key manager API).
+   * Must be called from the thread that serializes loads.
+   *
+   * @param identifier identifier of the key to forget
+   */
+  public void evict(final String identifier) {
+    cache.evict(identifier);
+  }
+
   private static Optional<ArtifactSigner> createSignerForKeystore(
       final Path keystoreFile, final PasswordReader passwordReader) {
     try {

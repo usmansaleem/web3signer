@@ -350,6 +350,25 @@ class DefaultArtifactSignerProviderTest {
     assertThat(removedCaptures.get(1)).containsExactly(PUBLIC_KEY1);
   }
 
+  @Test
+  void removeSignerNotifiesRemovalListener() throws Exception {
+    final ArtifactSigner mockSigner = mock(ArtifactSigner.class);
+    when(mockSigner.getIdentifier()).thenReturn(PUBLIC_KEY1);
+    final List<String> removed = new ArrayList<>();
+
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            () -> MappedResults.newInstance(List.of(mockSigner), 0),
+            Optional.empty(),
+            Optional.empty(),
+            removed::add);
+    signerProvider.load().get();
+    signerProvider.removeSigner(PUBLIC_KEY1).get();
+
+    assertThat(signerProvider.availableIdentifiers()).isEmpty();
+    assertThat(removed).containsExactly(PUBLIC_KEY1);
+  }
+
   private List<BLSKeyPair> randomBLSV4Keystores(final String identifier) throws IOException {
     final Path v4Dir =
         Files.createDirectories(

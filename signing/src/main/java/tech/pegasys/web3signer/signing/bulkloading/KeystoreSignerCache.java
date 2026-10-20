@@ -126,6 +126,31 @@ final class KeystoreSignerCache {
         previous.values().stream().map(CachedKeystore::signer).toList(), 1);
   }
 
+  /**
+   * Forgets the cached signer with the given identifier in every directory, so that it is not
+   * re-supplied by a later {@link #retainAllOnSourceError} or failed-file retention. Called when
+   * the signer was removed at runtime (e.g. via the key manager API).
+   */
+  void evict(final String identifier) {
+    final Map<Path, Map<Path, CachedKeystore>> updated = new HashMap<>();
+    boolean changed = false;
+    for (final Map.Entry<Path, Map<Path, CachedKeystore>> directory :
+        lastLoadedByDirectory.entrySet()) {
+      final Map<Path, CachedKeystore> files = directory.getValue();
+      if (files.values().stream().anyMatch(c -> c.signer().getIdentifier().equals(identifier))) {
+        final Map<Path, CachedKeystore> remaining = new HashMap<>(files);
+        remaining.values().removeIf(c -> c.signer().getIdentifier().equals(identifier));
+        updated.put(directory.getKey(), Map.copyOf(remaining));
+        changed = true;
+      } else {
+        updated.put(directory.getKey(), files);
+      }
+    }
+    if (changed) {
+      lastLoadedByDirectory = Map.copyOf(updated);
+    }
+  }
+
   private static Path key(final Path path) {
     return path.toAbsolutePath().normalize();
   }

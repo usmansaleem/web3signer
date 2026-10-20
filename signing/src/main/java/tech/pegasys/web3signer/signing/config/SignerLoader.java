@@ -213,6 +213,37 @@ public class SignerLoader implements Closeable {
   }
 
   /**
+   * Forgets the cached signer with the given identifier, so that it is not re-supplied when a later
+   * load cannot list the configuration directory. Called when the signer was removed at runtime
+   * (e.g. via the key manager API). Must be called from the thread that serializes loads.
+   *
+   * @param identifier identifier of the signer to forget
+   */
+  public void evict(final String identifier) {
+    final Map<String, CachedSignerData> updated = new HashMap<>();
+    boolean changed = false;
+    for (final CachedSignerData cached : cachedArtifactSigners.values()) {
+      if (cached.signers().stream().noneMatch(s -> s.getIdentifier().equals(identifier))) {
+        updated.put(cached.filePath(), cached);
+        continue;
+      }
+      changed = true;
+      final Set<ArtifactSigner> remaining =
+          cached.signers().stream()
+              .filter(s -> !s.getIdentifier().equals(identifier))
+              .collect(Collectors.toUnmodifiableSet());
+      if (!remaining.isEmpty()) {
+        updated.put(
+            cached.filePath(),
+            new CachedSignerData(cached.filePath(), cached.lastModifiedTime(), remaining));
+      }
+    }
+    if (changed) {
+      cachedArtifactSigners = Map.copyOf(updated);
+    }
+  }
+
+  /**
    * Identifies files that need to be processed by computing the set difference between available
    * files and unchanged cached files. The result includes both new files (never cached) and
    * modified files (cached but with different timestamps).

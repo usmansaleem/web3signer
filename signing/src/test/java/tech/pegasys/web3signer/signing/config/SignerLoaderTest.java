@@ -464,6 +464,31 @@ class SignerLoaderTest {
     }
   }
 
+  @Test
+  void evictedSignerIsNotRetainedWhenConfigDirectoryBecomesInaccessible() throws Exception {
+    final Path subDirectory = Files.createDirectory(configsDirectory.resolve("sub"));
+    createFileInDirectory(
+        subDirectory,
+        configFileName(blsKeyPair1),
+        blsKeyPair1.getSecretKey().toBytes().toHexString());
+    createFileInDirectory(
+        subDirectory,
+        configFileName(blsKeyPair2),
+        blsKeyPair2.getSecretKey().toBytes().toHexString());
+
+    try (SignerLoader subDirectoryLoader =
+        new SignerLoader(SignerLoaderConfig.withDefaults(subDirectory))) {
+      assertThat(subDirectoryLoader.load(signerParser).getValues()).hasSize(2);
+
+      subDirectoryLoader.evict(blsKeyPair1.getPublicKey().toHexString());
+      FileUtils.deleteDirectory(subDirectory.toFile());
+
+      final MappedResults<ArtifactSigner> result = subDirectoryLoader.load(signerParser);
+      assertThat(identifiers(result)).containsExactly(blsKeyPair2.getPublicKey().toHexString());
+      assertThat(result.getErrorCount()).isOne();
+    }
+  }
+
   // ==================== TIMEOUT BEHAVIOR TESTS ====================
 
   @Test

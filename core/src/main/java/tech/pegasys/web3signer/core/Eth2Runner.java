@@ -175,7 +175,13 @@ public class Eth2Runner extends Runner {
             createArtifactSignerSupplier(signerLoader, blsKeystoreBulkLoader, metricsSystem),
             slashingProtectionContext.<BiConsumer<Set<String>, Set<String>>>map(
                 PostLoadingValidatorsProcessor::new),
-            Optional.of(commitBoostApiParameters)));
+            Optional.of(commitBoostApiParameters),
+            // a key removed at runtime (key manager API) must not be re-supplied by a loader after
+            // a later source error
+            identifier -> {
+              signerLoader.evict(identifier);
+              blsKeystoreBulkLoader.evict(identifier);
+            }));
   }
 
   private Supplier<MappedResults<ArtifactSigner>> createArtifactSignerSupplier(
