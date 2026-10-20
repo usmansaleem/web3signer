@@ -44,6 +44,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -56,6 +57,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import org.apache.commons.io.FileUtils;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 import org.hyperledger.besu.plugin.services.metrics.LabelledMetric;
 import org.hyperledger.besu.plugin.services.metrics.OperationTimer;
@@ -392,6 +394,74 @@ class SignerLoaderTest {
 
     // Verify processFile called for the 3 modified files
     verify(spyLoader, times(3)).processFile(any(), eq(signerParser), any(), eq(3));
+  }
+
+  @Test
+  void modifiedFileThatFailsToParseRetainsPreviousSignersAndIsRetried() throws Exception {
+    final Path path1 =
+        createFileInConfigsDirectory(
+            configFileName(blsKeyPair1), blsKeyPair1.getSecretKey().toBytes().toHexString());
+    createFileInConfigsDirectory(
+        configFileName(blsKeyPair2), blsKeyPair2.getSecretKey().toBytes().toHexString());
+
+    MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    assertThat(result.getValues()).hasSize(2);
+    assertThat(result.getErrorCount()).isZero();
+
+    // corrupt file 1 and bump its modified time
+    final FileTime originalTime = Files.getLastModifiedTime(path1);
+    Files.writeString(path1, "NOT_A_VALID_KEY");
+    Files.setLastModifiedTime(path1, FileTime.fromMillis(originalTime.toMillis() + 1000));
+
+    result = signerLoader.load(signerParser);
+    assertThat(result.getValues()).hasSize(2);
+    assertThat(identifiers(result)).contains(blsKeyPair1.getPublicKey().toHexString());
+    assertThat(result.getErrorCount()).isOne();
+
+    // the failing file is processed again on the next load, and its previous signer is kept
+    final SignerLoader spyLoader = spy(signerLoader);
+    result = spyLoader.load(signerParser);
+    verify(spyLoader, times(1)).processFile(any(), eq(signerParser), any(), eq(1));
+    assertThat(result.getValues()).hasSize(2);
+    assertThat(result.getErrorCount()).isOne();
+
+    // fixing the file clears the error
+    createFileInConfigsDirectory(
+        configFileName(blsKeyPair1), blsKeyPair1.getSecretKey().toBytes().toHexString());
+    Files.setLastModifiedTime(path1, FileTime.fromMillis(originalTime.toMillis() + 2000));
+    result = spyLoader.load(signerParser);
+    assertThat(result.getValues()).hasSize(2);
+    assertThat(result.getErrorCount()).isZero();
+
+    // a deleted file is removed
+    Files.delete(path1);
+    result = spyLoader.load(signerParser);
+    assertThat(identifiers(result)).containsExactly(blsKeyPair2.getPublicKey().toHexString());
+    assertThat(result.getErrorCount()).isZero();
+  }
+
+  @Test
+  void inaccessibleConfigDirectoryRetainsPreviouslyLoadedSigners() throws Exception {
+    final Path subDirectory = Files.createDirectory(configsDirectory.resolve("sub"));
+    createFileInDirectory(
+        subDirectory,
+        configFileName(blsKeyPair1),
+        blsKeyPair1.getSecretKey().toBytes().toHexString());
+    createFileInDirectory(
+        subDirectory,
+        configFileName(blsKeyPair2),
+        blsKeyPair2.getSecretKey().toBytes().toHexString());
+
+    try (SignerLoader subDirectoryLoader =
+        new SignerLoader(SignerLoaderConfig.withDefaults(subDirectory))) {
+      assertThat(subDirectoryLoader.load(signerParser).getValues()).hasSize(2);
+
+      FileUtils.deleteDirectory(subDirectory.toFile());
+
+      final MappedResults<ArtifactSigner> result = subDirectoryLoader.load(signerParser);
+      assertThat(result.getValues()).hasSize(2);
+      assertThat(result.getErrorCount()).isOne();
+    }
   }
 
   // ==================== TIMEOUT BEHAVIOR TESTS ====================
@@ -854,6 +924,10 @@ class SignerLoaderTest {
       assertThat(result.getValues()).hasSize(count);
       assertThat(result.getErrorCount()).isZero();
     }
+  }
+
+  private static List<String> identifiers(final MappedResults<ArtifactSigner> result) {
+    return result.getValues().stream().map(ArtifactSigner::getIdentifier).toList();
   }
 
   // ==================== HELPER METHODS ====================

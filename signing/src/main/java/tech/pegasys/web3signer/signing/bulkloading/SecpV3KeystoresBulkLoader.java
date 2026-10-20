@@ -23,7 +23,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.logging.log4j.LogManager;
@@ -32,8 +32,19 @@ import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.crypto.exception.CipherException;
 
+/**
+ * Bulk-loads SECP256K1 v3 keystores. An instance remembers what was loaded from each directory so a
+ * keystore or source that fails to load keeps its previously loaded key, while a keystore that is
+ * no longer listed is dropped. Loads must be serialized by the caller.
+ *
+ * <p>An instance must only ever be used with one {@code ethereumSECPCompatible} value, i.e. either
+ * with {@link #loadV3KeystoresUsingPasswordFileOrDir} or with {@link #loadECDSAProxyKeystores},
+ * because the cached signers are keyed by directory only.
+ */
 public class SecpV3KeystoresBulkLoader {
   private static final Logger LOG = LogManager.getLogger();
+
+  private final KeystoreSignerCache cache = new KeystoreSignerCache();
 
   /**
    * Bulk-load Ethereum compatible SECP Artifact Signers from encrypted v3 keystores.
@@ -43,7 +54,7 @@ public class SecpV3KeystoresBulkLoader {
    *     the v3 keystores
    * @return MappedResults containing the loaded ArtifactSigners
    */
-  public static MappedResults<ArtifactSigner> loadV3KeystoresUsingPasswordFileOrDir(
+  public MappedResults<ArtifactSigner> loadV3KeystoresUsingPasswordFileOrDir(
       final Path keystoresPath, final Path pwrdFileOrDirPath) {
     return loadV3KeystoresUsingPasswordFileOrDir(keystoresPath, pwrdFileOrDirPath, true);
   }
@@ -58,18 +69,18 @@ public class SecpV3KeystoresBulkLoader {
    *     the v3 keystores
    * @return MappedResults containing the loaded ArtifactSigners
    */
-  public static MappedResults<ArtifactSigner> loadECDSAProxyKeystores(
+  public MappedResults<ArtifactSigner> loadECDSAProxyKeystores(
       final Path keystoresPath, final Path pwrdFileOrDirPath) {
     return loadV3KeystoresUsingPasswordFileOrDir(keystoresPath, pwrdFileOrDirPath, false);
   }
 
-  private static MappedResults<ArtifactSigner> loadV3KeystoresUsingPasswordFileOrDir(
+  private MappedResults<ArtifactSigner> loadV3KeystoresUsingPasswordFileOrDir(
       final Path keystoresPath,
       final Path pwrdFileOrDirPath,
       final boolean ethereumSECPCompatible) {
     if (!Files.exists(pwrdFileOrDirPath)) {
       LOG.error("Password file or directory doesn't exist.");
-      return MappedResults.errorResult();
+      return cache.retainAllOnSourceError(keystoresPath);
     }
 
     final List<Path> keystoresFiles;
@@ -77,7 +88,7 @@ public class SecpV3KeystoresBulkLoader {
       keystoresFiles = JsonFilesUtil.loadJsonExtPaths(keystoresPath);
     } catch (final IOException e) {
       LOG.error("Error listing v3 keystores paths {}", keystoresPath);
-      return MappedResults.errorResult();
+      return cache.retainAllOnSourceError(keystoresPath);
     }
 
     final PasswordReader passwordReader;
@@ -89,22 +100,22 @@ public class SecpV3KeystoresBulkLoader {
         passwordReader = passwordFile -> password;
       } catch (final IOException e) {
         LOG.error("Unable to read password file.", e);
-        return MappedResults.errorResult();
+        return cache.retainAllOnSourceError(keystoresPath);
       }
     } else {
       LOG.error(
           "Unexpected path. Expecting it to be a regular file or directory. {}", pwrdFileOrDirPath);
-      return MappedResults.errorResult();
+      return cache.retainAllOnSourceError(keystoresPath);
     }
 
-    return keystoresFiles.parallelStream()
-        .map(
-            keystoreFile ->
-                createSecpArtifactSigner(keystoreFile, passwordReader, ethereumSECPCompatible))
-        .reduce(MappedResults.newSetInstance(), MappedResults::merge);
+    return cache.load(
+        keystoresPath,
+        keystoresFiles,
+        keystoreFile ->
+            createSecpArtifactSigner(keystoreFile, passwordReader, ethereumSECPCompatible));
   }
 
-  private static MappedResults<ArtifactSigner> createSecpArtifactSigner(
+  private static Optional<ArtifactSigner> createSecpArtifactSigner(
       final Path v3KeystorePath,
       final PasswordReader passwordReader,
       final boolean ethereumSECPCompatible) {
@@ -121,10 +132,10 @@ public class SecpV3KeystoresBulkLoader {
               ? new EthSecpArtifactSigner(new CredentialSigner(credentials))
               : new K256ArtifactSigner(credentials.getEcKeyPair());
 
-      return MappedResults.newInstance(Set.of(artifactSigner), 0);
+      return Optional.of(artifactSigner);
     } catch (final IOException | CipherException | RuntimeException e) {
       LOG.error("Error loading v3 keystore {}", v3KeystorePath, e);
-      return MappedResults.errorResult();
+      return Optional.empty();
     }
   }
 }

@@ -23,8 +23,10 @@ import tech.pegasys.web3signer.signing.ArtifactSigner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Collection;
 
+import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -152,6 +154,83 @@ class BlsKeystoreBulkLoaderTest {
             keystoreDir, tempDir.resolve("invalidPasswordFilePath"));
     assertThat(result.getValues()).isEmpty();
     assertThat(result.getErrorCount()).isEqualTo(1);
+  }
+
+  @Test
+  void unreadablePasswordFileRetainsPreviouslyLoadedKeystoresUntilFixed(final @TempDir Path tempDir)
+      throws IOException {
+    final Path keystoreDir = Files.createDirectory(tempDir.resolve("keystores"));
+    KeystoreUtil.createKeystoreFile(KEY_PAIR_1, keystoreDir, KEYSTORE_PASSWORD_1);
+    KeystoreUtil.createKeystoreFile(KEY_PAIR_2, keystoreDir, KEYSTORE_PASSWORD_1);
+    final Path passwordFile =
+        Files.writeString(tempDir.resolve("password.txt"), KEYSTORE_PASSWORD_1);
+
+    final MappedResults<ArtifactSigner> initial =
+        loader.loadKeystoresUsingPasswordFile(keystoreDir, passwordFile);
+    assertThat(initial.getValues()).hasSize(2);
+    assertThat(initial.getErrorCount()).isZero();
+
+    Files.delete(passwordFile);
+    final MappedResults<ArtifactSigner> errored =
+        loader.loadKeystoresUsingPasswordFile(keystoreDir, passwordFile);
+    assertThat(errored.getValues()).hasSize(2);
+    assertThatSignerHasPublicKey(errored.getValues(), KEY_PAIR_1);
+    assertThatSignerHasPublicKey(errored.getValues(), KEY_PAIR_2);
+    assertThat(errored.getErrorCount()).isEqualTo(1);
+
+    Files.writeString(passwordFile, KEYSTORE_PASSWORD_1);
+    Files.delete(keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".json"));
+    final MappedResults<ArtifactSigner> recovered =
+        loader.loadKeystoresUsingPasswordFile(keystoreDir, passwordFile);
+    assertThat(recovered.getValues()).hasSize(1);
+    assertThatSignerHasPublicKey(recovered.getValues(), KEY_PAIR_2);
+    assertThat(recovered.getErrorCount()).isZero();
+  }
+
+  @Test
+  void failingKeystoreRetainsItsPreviousKeyWhileDeletedKeystoreIsRemoved(
+      final @TempDir Path keystoreDir, final @TempDir Path passwordDir) throws IOException {
+    KeystoreUtil.createKeystore(KEY_PAIR_1, keystoreDir, passwordDir, KEYSTORE_PASSWORD_1);
+    KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
+    assertThat(loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir).getValues())
+        .hasSize(2);
+
+    final Path keystore1 = keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".json");
+    Files.writeString(keystore1, "{}");
+    Files.setLastModifiedTime(
+        keystore1, FileTime.fromMillis(Files.getLastModifiedTime(keystore1).toMillis() + 1000));
+    Files.delete(keystoreDir.resolve(KEY_PAIR_2.getPublicKey() + ".json"));
+    Files.delete(passwordDir.resolve(KEY_PAIR_2.getPublicKey() + ".txt"));
+
+    final MappedResults<ArtifactSigner> errored =
+        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    assertThat(errored.getValues()).hasSize(1);
+    assertThatSignerHasPublicKey(errored.getValues(), KEY_PAIR_1);
+    assertThat(errored.getErrorCount()).isEqualTo(1);
+
+    Files.delete(keystore1);
+    final MappedResults<ArtifactSigner> recovered =
+        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    assertThat(recovered.getValues()).isEmpty();
+    assertThat(recovered.getErrorCount()).isZero();
+  }
+
+  @Test
+  void missingKeystoreDirectoryRetainsPreviouslyLoadedKeystores(final @TempDir Path tempDir)
+      throws IOException {
+    final Path keystoreDir = Files.createDirectory(tempDir.resolve("keystores"));
+    final Path passwordDir = Files.createDirectory(tempDir.resolve("passwords"));
+    KeystoreUtil.createKeystore(KEY_PAIR_1, keystoreDir, passwordDir, KEYSTORE_PASSWORD_1);
+    KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
+    assertThat(loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir).getValues())
+        .hasSize(2);
+
+    FileUtils.deleteDirectory(keystoreDir.toFile());
+
+    final MappedResults<ArtifactSigner> errored =
+        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    assertThat(errored.getValues()).hasSize(2);
+    assertThat(errored.getErrorCount()).isEqualTo(1);
   }
 
   private void assertThatSignerHasPublicKey(

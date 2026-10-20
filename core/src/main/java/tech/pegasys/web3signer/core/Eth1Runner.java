@@ -28,6 +28,7 @@ import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnectionFactory;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.EthSecpArtifactSigner;
+import tech.pegasys.web3signer.signing.bulkloading.BulkLoadRetention;
 import tech.pegasys.web3signer.signing.bulkloading.SecpAwsBulkLoader;
 import tech.pegasys.web3signer.signing.bulkloading.SecpAzureBulkLoader;
 import tech.pegasys.web3signer.signing.bulkloading.SecpV3KeystoresBulkLoader;
@@ -68,6 +69,8 @@ import org.hyperledger.besu.plugin.services.MetricsSystem;
 public class Eth1Runner extends Runner {
   private static final Logger LOG = LogManager.getLogger();
   private final Eth1Config eth1Config;
+  private final BulkLoadRetention azureRetention = new BulkLoadRetention("Azure key vault");
+  private final BulkLoadRetention awsRetention = new BulkLoadRetention("AWS KMS");
 
   public Eth1Runner(final BaseConfig baseConfig, final Eth1Config eth1Config) {
     super(baseConfig);
@@ -90,6 +93,8 @@ public class Eth1Runner extends Runner {
     final CachedAwsKmsClientFactory cachedAwsKmsClientFactory =
         new CachedAwsKmsClientFactory(eth1Config.getAwsKmsClientCacheSize());
     final SignerLoader signerLoader = new SignerLoader(baseConfig.getSignerLoaderConfig());
+    // long-lived: remembers what was loaded from each keystore directory across reloads
+    final SecpV3KeystoresBulkLoader v3KeystoresBulkLoader = new SecpV3KeystoresBulkLoader();
 
     // Register ALL for cleanup ONCE
     registerClose(azureKeyVaultFactory);
@@ -114,7 +119,8 @@ public class Eth1Runner extends Runner {
                       azureKeyVaultFactory,
                       azureSignerFactory,
                       cachedAwsKmsClientFactory,
-                      awsKmsSignerFactory);
+                      awsKmsSignerFactory,
+                      v3KeystoresBulkLoader);
 
               return MappedResults.merge(configFileResults, bulkLoadResults);
             },
@@ -159,7 +165,8 @@ public class Eth1Runner extends Runner {
       final AzureKeyVaultFactory azureKeyVaultFactory,
       final AzureKeyVaultSignerFactory azureSignerFactory,
       final CachedAwsKmsClientFactory cachedAwsKmsClientFactory,
-      final AwsKmsSignerFactory awsKmsSignerFactory) {
+      final AwsKmsSignerFactory awsKmsSignerFactory,
+      final SecpV3KeystoresBulkLoader v3KeystoresBulkLoader) {
     MappedResults<ArtifactSigner> results = MappedResults.newSetInstance();
     if (eth1Config.getAzureKeyVaultConfig().isAzureKeyVaultEnabled()) {
       results =
@@ -172,7 +179,7 @@ public class Eth1Runner extends Runner {
     }
 
     // v3 bulk loading
-    results = MappedResults.merge(results, bulkloadV3Keystores());
+    results = MappedResults.merge(results, bulkloadV3Keystores(v3KeystoresBulkLoader));
 
     return results;
   }
@@ -192,7 +199,8 @@ public class Eth1Runner extends Runner {
             azureKeyVaultConfig.getAzureOverrides());
     final SecpAzureBulkLoader secpAzureBulkLoader =
         new SecpAzureBulkLoader(azureKeyVault, azureSignerFactory);
-    final MappedResults<ArtifactSigner> azureResult = secpAzureBulkLoader.load(azureKeyVaultConfig);
+    final MappedResults<ArtifactSigner> azureResult =
+        azureRetention.retainMissingOnError(secpAzureBulkLoader.load(azureKeyVaultConfig));
     LOG.info(
         "Keys loaded from Azure: [{}], with error count: [{}]",
         azureResult.getValues().size(),
@@ -208,7 +216,8 @@ public class Eth1Runner extends Runner {
     final SecpAwsBulkLoader secpAwsBulkLoader =
         new SecpAwsBulkLoader(cachedAwsKmsClientFactory, awsKmsSignerFactory);
     final MappedResults<ArtifactSigner> awsResult =
-        secpAwsBulkLoader.load(eth1Config.getAwsVaultParameters());
+        awsRetention.retainMissingOnError(
+            secpAwsBulkLoader.load(eth1Config.getAwsVaultParameters()));
     LOG.info(
         "Keys loaded from AWS: [{}], with error count: [{}]",
         awsResult.getValues().size(),
@@ -217,7 +226,8 @@ public class Eth1Runner extends Runner {
     return awsResult;
   }
 
-  private MappedResults<ArtifactSigner> bulkloadV3Keystores() {
+  private MappedResults<ArtifactSigner> bulkloadV3Keystores(
+      final SecpV3KeystoresBulkLoader v3KeystoresBulkLoader) {
     final KeystoresParameters v3WalletBLParams = eth1Config.getV3KeystoresBulkLoadParameters();
     if (!v3WalletBLParams.isEnabled()) {
       return MappedResults.newInstance(Collections.emptyList(), 0);
@@ -225,7 +235,7 @@ public class Eth1Runner extends Runner {
 
     LOG.info("Bulk loading v3 keystore files ... ");
     final MappedResults<ArtifactSigner> walletResults =
-        SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(
+        v3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(
             v3WalletBLParams.getKeystoresPath(),
             v3WalletBLParams.hasKeystoresPasswordFile()
                 ? v3WalletBLParams.getKeystoresPasswordFile()

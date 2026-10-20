@@ -44,6 +44,7 @@ import tech.pegasys.web3signer.signing.BlsArtifactSigner;
 import tech.pegasys.web3signer.signing.bulkloading.BlsAwsBulkLoader;
 import tech.pegasys.web3signer.signing.bulkloading.BlsGcpBulkLoader;
 import tech.pegasys.web3signer.signing.bulkloading.BlsKeystoreBulkLoader;
+import tech.pegasys.web3signer.signing.bulkloading.BulkLoadRetention;
 import tech.pegasys.web3signer.signing.config.AwsVaultParameters;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultFactory;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultParameters;
@@ -95,6 +96,9 @@ public class Eth2Runner extends Runner {
   private final KeyManagerApiConfig keyManagerApiConfig;
   private final boolean signingExtEnabled;
   private final KeystoresParameters commitBoostApiParameters;
+  private final BulkLoadRetention azureRetention = new BulkLoadRetention("Azure key vault");
+  private final BulkLoadRetention awsRetention = new BulkLoadRetention("AWS Secrets Manager");
+  private final BulkLoadRetention gcpRetention = new BulkLoadRetention("GCP Secret Manager");
 
   public Eth2Runner(
       final BaseConfig baseConfig,
@@ -163,23 +167,29 @@ public class Eth2Runner extends Runner {
     // Register for cleanup ONCE
     registerClose(signerLoader);
 
+    // long-lived: remembers what was loaded from each keystore directory across reloads
+    final BlsKeystoreBulkLoader blsKeystoreBulkLoader = new BlsKeystoreBulkLoader();
+
     return List.of(
         new DefaultArtifactSignerProvider(
-            createArtifactSignerSupplier(signerLoader, metricsSystem),
+            createArtifactSignerSupplier(signerLoader, blsKeystoreBulkLoader, metricsSystem),
             slashingProtectionContext.<BiConsumer<Set<String>, Set<String>>>map(
                 PostLoadingValidatorsProcessor::new),
             Optional.of(commitBoostApiParameters)));
   }
 
   private Supplier<MappedResults<ArtifactSigner>> createArtifactSignerSupplier(
-      final SignerLoader signerLoader, final MetricsSystem metricsSystem) {
+      final SignerLoader signerLoader,
+      final BlsKeystoreBulkLoader blsKeystoreBulkLoader,
+      final MetricsSystem metricsSystem) {
     return () -> {
       try (final AzureKeyVaultFactory azureKeyVaultFactory = new AzureKeyVaultFactory()) {
         // load keys from key config files
         MappedResults<ArtifactSigner> configFileResults =
             loadSignersFromKeyConfigFiles(signerLoader, azureKeyVaultFactory, metricsSystem);
         // bulkload keys
-        MappedResults<ArtifactSigner> bulkLoadResults = bulkLoadSigners(azureKeyVaultFactory);
+        MappedResults<ArtifactSigner> bulkLoadResults =
+            bulkLoadSigners(azureKeyVaultFactory, blsKeystoreBulkLoader);
 
         return MappedResults.merge(configFileResults, bulkLoadResults);
       }
@@ -216,7 +226,8 @@ public class Eth2Runner extends Runner {
   }
 
   private MappedResults<ArtifactSigner> bulkLoadSigners(
-      final AzureKeyVaultFactory azureKeyVaultFactory) {
+      final AzureKeyVaultFactory azureKeyVaultFactory,
+      final BlsKeystoreBulkLoader blsKeystoreBulkLoader) {
     MappedResults<ArtifactSigner> results = MappedResults.newSetInstance();
     if (azureKeyVaultParameters.isAzureKeyVaultEnabled()) {
       LOG.info("Bulk loading keys from Azure key vault ... ");
@@ -225,7 +236,8 @@ public class Eth2Runner extends Runner {
        Each raw bls private key in hex format is approximately 100 bytes. We should store about 200 or fewer
        `\n` delimited keys per secret.
       */
-      final MappedResults<ArtifactSigner> azureResult = loadAzureSigners(azureKeyVaultFactory);
+      final MappedResults<ArtifactSigner> azureResult =
+          azureRetention.retainMissingOnError(loadAzureSigners(azureKeyVaultFactory));
       LOG.info(
           "Keys loaded from Azure: [{}], with error count: [{}]",
           azureResult.getValues().size(),
@@ -238,10 +250,10 @@ public class Eth2Runner extends Runner {
       LOG.info("Bulk loading keys from local keystores ... ");
       final MappedResults<ArtifactSigner> keystoreSignersResult =
           keystoresParameters.hasKeystoresPasswordsPath()
-              ? BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(
+              ? blsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(
                   keystoresParameters.getKeystoresPath(),
                   keystoresParameters.getKeystoresPasswordsPath())
-              : BlsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(
+              : blsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(
                   keystoresParameters.getKeystoresPath(),
                   keystoresParameters.getKeystoresPasswordFile());
       LOG.info(
@@ -257,7 +269,8 @@ public class Eth2Runner extends Runner {
       LOG.info("Bulk loading keys from AWS Secrets Manager ... ");
       final BlsAwsBulkLoader blsAwsBulkLoader = new BlsAwsBulkLoader();
 
-      final MappedResults<ArtifactSigner> awsResult = blsAwsBulkLoader.load(awsVaultParameters);
+      final MappedResults<ArtifactSigner> awsResult =
+          awsRetention.retainMissingOnError(blsAwsBulkLoader.load(awsVaultParameters));
       LOG.info(
           "Keys loaded from AWS Secrets Manager: [{}], with error count: [{}]",
           awsResult.getValues().size(),
@@ -270,7 +283,7 @@ public class Eth2Runner extends Runner {
       LOG.info("Bulk loading keys from GCP Secret Manager ... ");
       final BlsGcpBulkLoader blsGcpBulkLoader = new BlsGcpBulkLoader();
       final MappedResults<ArtifactSigner> gcpResult =
-          blsGcpBulkLoader.load(gcpSecretManagerParameters);
+          gcpRetention.retainMissingOnError(blsGcpBulkLoader.load(gcpSecretManagerParameters));
       LOG.info(
           "Keys loaded from GCP Secret Manager: [{}], with error count: [{}]",
           gcpResult.getValues().size(),

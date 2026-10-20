@@ -4,6 +4,7 @@
 ### Features Added
 
 ### Bugs Fixed
+- `POST /reload` no longer disables validators when a keystore source fails to load. Loaders now attribute failures: a keystore or key config file that fails to load keeps its previously loaded key (retried on the next reload), an unreadable keystore directory, password file or config directory keeps all keys previously loaded from it, and a vault reporting errors keeps its previously loaded keys that are missing. Keys whose files are genuinely deleted are still removed in the same reload. Unchanged bulk-loaded keystores are no longer decrypted again on reload. [#1248][issue_1248] [#1252][issue_1252] Fix via [#1251][PR_1251].
 
 ### Breaking Changes
 
@@ -11,6 +12,9 @@
 
 ### Security
 
+[issue_1248]: https://github.com/Consensys-Incorporated/web3signer/issues/1248
+[issue_1252]: https://github.com/Consensys-Incorporated/web3signer/issues/1252
+[PR_1251]: https://github.com/Consensys-Incorporated/web3signer/pull/1251
 
 ---
 ## 26.10.0

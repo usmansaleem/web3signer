@@ -27,43 +27,51 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+/**
+ * Bulk-loads BLS keystores. One instance per configured keystore source, long-lived (held by the
+ * runner): it remembers what was loaded from each directory so a keystore or source that fails to
+ * load keeps its previously loaded key, while a keystore that is no longer listed is dropped. Loads
+ * must be serialized by the caller.
+ */
 public class BlsKeystoreBulkLoader {
   private static final Logger LOG = LogManager.getLogger();
 
-  public static MappedResults<ArtifactSigner> loadKeystoresUsingPasswordDir(
+  private final KeystoreSignerCache cache = new KeystoreSignerCache();
+
+  public MappedResults<ArtifactSigner> loadKeystoresUsingPasswordDir(
       final Path keystoresDirectory, final Path passwordsDirectory) {
     final List<Path> keystoreFiles;
     try {
       keystoreFiles = JsonFilesUtil.loadJsonExtPaths(keystoresDirectory);
     } catch (final IOException e) {
       LOG.error("Error reading keystore files", e);
-      return MappedResults.errorResult();
+      return cache.retainAllOnSourceError(keystoresDirectory);
     }
 
-    return keystoreFiles.parallelStream()
-        .map(
-            keystoreFile ->
-                createSignerForKeystore(
-                    keystoreFile,
-                    keystorePassword ->
-                        Files.readString(passwordsDirectory.resolve(keystorePassword))))
-        .reduce(MappedResults.newSetInstance(), MappedResults::merge);
+    return cache.load(
+        keystoresDirectory,
+        keystoreFiles,
+        keystoreFile ->
+            createSignerForKeystore(
+                keystoreFile,
+                keystorePassword ->
+                    Files.readString(passwordsDirectory.resolve(keystorePassword))));
   }
 
-  public static MappedResults<ArtifactSigner> loadKeystoresUsingPasswordFile(
+  public MappedResults<ArtifactSigner> loadKeystoresUsingPasswordFile(
       final Path keystoresDirectory, final Path passwordFile) {
     final List<Path> keystoreFiles;
     try {
       keystoreFiles = JsonFilesUtil.loadJsonExtPaths(keystoresDirectory);
     } catch (final IOException e) {
       LOG.error("Error reading keystore files", e);
-      return MappedResults.errorResult();
+      return cache.retainAllOnSourceError(keystoresDirectory);
     }
 
     final String password;
@@ -71,15 +79,16 @@ public class BlsKeystoreBulkLoader {
       password = Files.readString(passwordFile);
     } catch (final IOException e) {
       LOG.error("Unable to read password file", e);
-      return MappedResults.errorResult();
+      return cache.retainAllOnSourceError(keystoresDirectory);
     }
 
-    return keystoreFiles.parallelStream()
-        .map(keystoreFile -> createSignerForKeystore(keystoreFile, keystorePassword -> password))
-        .reduce(MappedResults.newSetInstance(), MappedResults::merge);
+    return cache.load(
+        keystoresDirectory,
+        keystoreFiles,
+        keystoreFile -> createSignerForKeystore(keystoreFile, keystorePassword -> password));
   }
 
-  private static MappedResults<ArtifactSigner> createSignerForKeystore(
+  private static Optional<ArtifactSigner> createSignerForKeystore(
       final Path keystoreFile, final PasswordReader passwordReader) {
     try {
       LOG.debug("Loading keystore {}", keystoreFile);
@@ -88,12 +97,10 @@ public class BlsKeystoreBulkLoader {
           FilenameUtils.removeExtension(keystoreFile.getFileName().toString());
       final String password = passwordReader.readPassword(fileNameWithoutExt + ".txt");
       final BLSKeyPair keyPair = KeyStore.decrypt(password, keyStoreData);
-      final BlsArtifactSigner artifactSigner =
-          new BlsArtifactSigner(keyPair, SignerOrigin.FILE_KEYSTORE);
-      return MappedResults.newInstance(Set.of(artifactSigner), 0);
+      return Optional.of(new BlsArtifactSigner(keyPair, SignerOrigin.FILE_KEYSTORE));
     } catch (final KeyStoreValidationException | IOException e) {
       LOG.error("Keystore could not be loaded {}", keystoreFile, e);
-      return MappedResults.errorResult();
+      return Optional.empty();
     }
   }
 }
