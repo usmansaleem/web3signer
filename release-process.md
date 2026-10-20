@@ -27,15 +27,20 @@ Start with a release candidate on the commit to release, usually the tip of `mas
 ```bash
 git fetch upstream
 git tag -a 26.8.0-RC1 -m "26.8.0-RC1" upstream/master
-git push upstream 26.8.0-RC1
+git push https://github.com/Consensys-Incorporated/web3signer.git 26.8.0-RC1
 ```
+
+The push commands name the repository URL instead of a remote: a clone may have the push URL of its
+`upstream` remote disabled, and then `git push upstream 26.8.0-RC1` fails with `'DISABLED' does not appear
+to be a git repository`. Fetching is unaffected, so `upstream` still names the canonical repository in
+`git fetch` and `upstream/master`.
 
 Once the candidate has passed internal deployment, tag the same commit with the final version, so that the
 release contains exactly the code that was tested:
 
 ```bash
 git tag -a 26.8.0 -m "26.8.0" '26.8.0-RC1^{commit}'
-git push upstream 26.8.0
+git push https://github.com/Consensys-Incorporated/web3signer.git 26.8.0
 ```
 
 Type `^{commit}` exactly as shown; it is git syntax, not a placeholder for a hash. `26.8.0-RC1^{commit}` means

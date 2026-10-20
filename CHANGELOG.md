@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 26.10.0
 ### Features Added
+- Teku libraries updated to 26.10.1, which schedules the Gloas (Glamsterdam) fork for the Hoodi network at epoch 132352 (26 Oct 2026 17:42:48 UTC). Required update for the Hoodi Glamsterdam fork.
 
 ### Bugs Fixed
 - `POST /reload` no longer disables validators when a keystore source (keystore directory, password file or vault) fails to load. Keys that are missing from an errored load are retained; a later error-free reload still removes keys that are genuinely gone. [#1248][issue_1248] Fix via [#1251][PR_1251].
@@ -9,6 +10,8 @@
 ### Breaking Changes
 
 ### CI/Build Enhancements
+- Gradle wrapper upgraded to 9.8.1 and Gradle build plugins updated. [#1257][PR_1257]
+- Project version calculation needs the `git` executable on `PATH`; without it the version is `UNKNOWN+develop`. [#1257][PR_1257]
 
 ### Security
 
@@ -54,6 +57,7 @@
 [PR_1235]: https://github.com/Consensys-Incorporated/web3signer/pull/1235
 [PR_1237]: https://github.com/Consensys-Incorporated/web3signer/pull/1237
 [PR_1240]: https://github.com/Consensys-Incorporated/web3signer/pull/1240
+[PR_1257]: https://github.com/Consensys-Incorporated/web3signer/pull/1257
 
 ---
 ## 26.7.0
