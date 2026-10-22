@@ -56,38 +56,8 @@ public class SecpV3KeystoresBulkLoader {
    */
   public static SignerSourceResult loadV3KeystoresUsingPasswordFileOrDir(
       final Path keystoresPath, final Path pwrdFileOrDirPath) {
-    return loadV3KeystoresUsingPasswordFileOrDir(keystoresPath, pwrdFileOrDirPath, true);
-  }
-
-  /**
-   * Bulk-load generic SECP Artifact Signers from encrypted v3 keystores that can be used by Commit
-   * Boost API. It uses compressed public key as identifier and apply SHA256 digest on the message
-   * before signing.
-   *
-   * @param keystoresPath Path to the directory containing the v3 keystores
-   * @param pwrdFileOrDirPath Path to the password file or directory containing the passwords for
-   *     the v3 keystores
-   * @return the loaded ArtifactSigners with their keystore files and the failed keystore files
-   */
-  public static SignerSourceResult loadECDSAProxyKeystores(
-      final Path keystoresPath, final Path pwrdFileOrDirPath) {
-    return loadV3KeystoresUsingPasswordFileOrDir(keystoresPath, pwrdFileOrDirPath, false);
-  }
-
-  private static SignerSourceResult loadV3KeystoresUsingPasswordFileOrDir(
-      final Path keystoresPath,
-      final Path pwrdFileOrDirPath,
-      final boolean ethereumSECPCompatible) {
     if (!Files.exists(pwrdFileOrDirPath)) {
       LOG.error("Password file or directory doesn't exist.");
-      return SignerSourceResult.sourceFailure(SOURCE_NAME);
-    }
-
-    final List<Path> keystoresFiles;
-    try {
-      keystoresFiles = JsonFilesUtil.loadJsonExtPaths(keystoresPath);
-    } catch (final IOException e) {
-      LOG.error("Error listing v3 keystores paths {}", keystoresPath);
       return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
@@ -105,6 +75,36 @@ public class SecpV3KeystoresBulkLoader {
     } else {
       LOG.error(
           "Unexpected path. Expecting it to be a regular file or directory. {}", pwrdFileOrDirPath);
+      return SignerSourceResult.sourceFailure(SOURCE_NAME);
+    }
+
+    return loadV3Keystores(keystoresPath, passwordReader, true);
+  }
+
+  /**
+   * Bulk-load generic SECP Artifact Signers from encrypted v3 keystores that can be used by Commit
+   * Boost API. It uses compressed public key as identifier and apply SHA256 digest on the message
+   * before signing.
+   *
+   * @param keystoresPath Path to the directory containing the v3 keystores
+   * @param password the password of every keystore in the directory, read once per load for all
+   *     proxy directories
+   * @return the loaded ArtifactSigners with their keystore files and the failed keystore files
+   */
+  public static SignerSourceResult loadECDSAProxyKeystores(
+      final Path keystoresPath, final String password) {
+    return loadV3Keystores(keystoresPath, passwordFile -> password, false);
+  }
+
+  private static SignerSourceResult loadV3Keystores(
+      final Path keystoresPath,
+      final PasswordReader passwordReader,
+      final boolean ethereumSECPCompatible) {
+    final List<Path> keystoresFiles;
+    try {
+      keystoresFiles = JsonFilesUtil.loadJsonExtPaths(keystoresPath);
+    } catch (final IOException e) {
+      LOG.error("Error listing v3 keystores paths {}", keystoresPath);
       return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 

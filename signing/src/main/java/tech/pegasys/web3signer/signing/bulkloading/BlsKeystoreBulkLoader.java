@@ -69,19 +69,28 @@ public class BlsKeystoreBulkLoader {
 
   public static SignerSourceResult loadKeystoresUsingPasswordFile(
       final Path keystoresDirectory, final Path passwordFile) {
-    final List<Path> keystoreFiles;
-    try {
-      keystoreFiles = JsonFilesUtil.loadJsonExtPaths(keystoresDirectory);
-    } catch (final IOException e) {
-      LOG.error("Error reading keystore files", e);
-      return SignerSourceResult.sourceFailure(SOURCE_NAME);
-    }
-
     final String password;
     try {
       password = Files.readString(passwordFile);
     } catch (final IOException e) {
       LOG.error("Unable to read password file", e);
+      return SignerSourceResult.sourceFailure(SOURCE_NAME);
+    }
+
+    return loadKeystoresUsingPassword(keystoresDirectory, password);
+  }
+
+  /**
+   * Loads every keystore in the directory with the same, already read, password. Used for proxy
+   * keystores, whose password file is read once per load for all proxy directories.
+   */
+  public static SignerSourceResult loadKeystoresUsingPassword(
+      final Path keystoresDirectory, final String password) {
+    final List<Path> keystoreFiles;
+    try {
+      keystoreFiles = JsonFilesUtil.loadJsonExtPaths(keystoresDirectory);
+    } catch (final IOException e) {
+      LOG.error("Error reading keystore files", e);
       return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 

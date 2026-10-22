@@ -14,6 +14,7 @@ package tech.pegasys.web3signer.signing.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +37,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.stream.IntStream;
@@ -473,6 +476,119 @@ class DefaultArtifactSignerProviderTest {
     signerProvider.load().get();
 
     assertThat(signerProvider.availableIdentifiers()).isEmpty();
+  }
+
+  @Test
+  void signerReimportedAfterRemovalIsRetainedWhileAnotherSourceFails() throws Exception {
+    final ArtifactSigner configSigner = mockSigner(PUBLIC_KEY1);
+    final ArtifactSigner keystoreSigner = mockSigner(PUBLIC_KEY2);
+
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(
+                fileResult("key config files", Map.of("/config/1.yaml", configSigner)),
+                fileResult("bls keystores", Map.of("/keystores/2.json", keystoreSigner))));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.empty(), Optional.empty());
+    signerProvider.load().get();
+
+    // key manager API delete followed by an import of the same key
+    signerProvider.removeSigner(PUBLIC_KEY1).get();
+    signerProvider.addSigner(configSigner).get();
+
+    // the key config source no longer lists 1.yaml while the keystores source fails: the
+    // re-imported key is a runtime key, not the deleted 1.yaml signer, so it is kept
+    resultsRef.set(
+        List.of(
+            fileResult("key config files", Map.of()),
+            SignerSourceResult.sourceFailure("bls keystores")));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.availableIdentifiers())
+        .containsExactlyInAnyOrder(PUBLIC_KEY1, PUBLIC_KEY2);
+  }
+
+  @Test
+  void interruptedLoadKeepsCurrentSignersAndSkipsCallback() throws Exception {
+    final ArtifactSigner mockSigner = mockSigner(PUBLIC_KEY1);
+
+    final List<Set<String>> removedCaptures = new ArrayList<>();
+    final BiConsumer<Set<String>, Set<String>> callback =
+        (added, removed) -> removedCaptures.add(Set.copyOf(removed));
+
+    final AtomicReference<Boolean> interrupt = new AtomicReference<>(false);
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            () -> {
+              if (interrupt.get()) {
+                // shutdown interrupts the loader thread while the sources are being read
+                Thread.currentThread().interrupt();
+                return List.of(fileResult("key config files", Map.of()));
+              }
+              return List.of(fileResult("key config files", Map.of("/config/1.yaml", mockSigner)));
+            },
+            Optional.of(callback),
+            Optional.empty());
+    signerProvider.load().get();
+
+    interrupt.set(true);
+    assertThatThrownBy(() -> signerProvider.load().get())
+        .isInstanceOf(ExecutionException.class)
+        .hasCauseInstanceOf(CancellationException.class);
+
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
+    assertThat(removedCaptures).hasSize(1);
+  }
+
+  @Test
+  void proxySignersAreRetainedWhenProxyPasswordFileCannotBeRead() throws Exception {
+    final KeystoresParameters commitBoostParameters =
+        new TestCommitBoostParameters(commitBoostKeystoresPath, commitBoostPasswordDir);
+    final List<BLSKeyPair> blsProxies = randomBLSV4Keystores(PUBLIC_KEY1);
+    final List<ECKeyPair> secpProxies = randomSecpV3Keystores(PUBLIC_KEY1);
+
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            () -> List.of(sourceResult("key config files", mockSigner(PUBLIC_KEY1))),
+            Optional.empty(),
+            Optional.of(commitBoostParameters));
+    signerProvider.load().get();
+
+    Files.delete(commitBoostParameters.getKeystoresPasswordFile());
+    signerProvider.load().get();
+
+    final Map<KeyType, Set<String>> proxies = signerProvider.getProxyIdentifiers(PUBLIC_KEY1);
+    assertThat(proxies.get(KeyType.BLS)).containsExactlyInAnyOrder(getPublicKeysArray(blsProxies));
+    assertThat(proxies.get(KeyType.SECP256K1))
+        .containsExactlyInAnyOrder(getCompressedSECPPublicKeysArray(secpProxies));
+  }
+
+  @Test
+  void proxySignerOfFailedFileIsRetainedWhileDeletedProxySignerIsRemoved() throws Exception {
+    final KeystoresParameters commitBoostParameters =
+        new TestCommitBoostParameters(commitBoostKeystoresPath, commitBoostPasswordDir);
+    final List<BLSKeyPair> blsProxies = randomBLSV4Keystores(PUBLIC_KEY1);
+    final Path blsProxyDir = commitBoostKeystoresPath.resolve(PUBLIC_KEY1).resolve("BLS");
+
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            () -> List.of(sourceResult("key config files", mockSigner(PUBLIC_KEY1))),
+            Optional.empty(),
+            Optional.of(commitBoostParameters));
+    signerProvider.load().get();
+
+    // proxy 0 becomes unreadable, proxy 1 is deleted
+    final String failedProxy = blsProxies.get(0).getPublicKey().toString();
+    final String deletedProxy = blsProxies.get(1).getPublicKey().toString();
+    Files.writeString(blsProxyDir.resolve(failedProxy + ".json"), "not a keystore");
+    Files.delete(blsProxyDir.resolve(deletedProxy + ".json"));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1).get(KeyType.BLS))
+        .containsExactlyInAnyOrder(
+            failedProxy,
+            blsProxies.get(2).getPublicKey().toString(),
+            blsProxies.get(3).getPublicKey().toString());
   }
 
   private static ArtifactSigner mockSigner(final String identifier) {

@@ -313,10 +313,12 @@ public class SignerLoader implements Closeable {
     final Map<String, Set<ArtifactSigner>> allLoadedSigners = new HashMap<>();
     final Set<String> failedPaths = new HashSet<>();
     final List<String> fileList = new ArrayList<>(filesToProcess);
+    boolean stoppedEarly = false;
 
     for (int batchStart = 0; batchStart < fileList.size(); batchStart += config.batchSize()) {
       if (closed.get()) {
         LOG.warn("SignerLoader closed during batch processing");
+        stoppedEarly = true;
         break;
       }
       final int batchEnd = Math.min(batchStart + config.batchSize(), fileList.size());
@@ -346,8 +348,17 @@ public class SignerLoader implements Closeable {
         // Interrupted while collecting batch results
         LOG.warn("Batch processing interrupted, returning partial results");
         // Thread interrupt status already restored by collectBatchResults
+        stoppedEarly = true;
         break; // Stop processing further batches
       }
+    }
+
+    if (stoppedEarly) {
+      // files that were not processed are not deleted: report them as failed so that the signers
+      // previously loaded from them are kept
+      fileList.stream()
+          .filter(pathStr -> !allLoadedSigners.containsKey(pathStr))
+          .forEach(failedPaths::add);
     }
 
     return new LoadResult(allLoadedSigners, failedPaths);
@@ -496,12 +507,14 @@ public class SignerLoader implements Closeable {
       final SignerParser signerParser,
       final AtomicLong configFilesHandled,
       final int totalFiles) {
+    // Interrupted (cancelled or shutting down) files are reported as failed, not as deleted
+    final Set<String> interrupted = Set.of(pathStr);
     final Set<String> noFailures = Set.of();
 
     // Check interruption at the beginning
     if (Thread.currentThread().isInterrupted()) {
       LOG.debug("File processing interrupted before start: {}", pathStr);
-      return new LoadResult(Map.of(), noFailures);
+      return new LoadResult(Map.of(), interrupted);
     }
 
     reportProgress(configFilesHandled, totalFiles);
@@ -514,7 +527,7 @@ public class SignerLoader implements Closeable {
       // Check interruption after IO operation
       if (Thread.currentThread().isInterrupted()) {
         LOG.debug("File processing interrupted after reading: {}", pathStr);
-        return new LoadResult(Map.of(), noFailures);
+        return new LoadResult(Map.of(), interrupted);
       }
 
       // Step 2: Parse metadata (mixed IO/CPU)
@@ -532,7 +545,7 @@ public class SignerLoader implements Closeable {
       // Check interruption before expensive decryption operation
       if (Thread.currentThread().isInterrupted()) {
         LOG.debug("File processing interrupted before decryption: {}", pathStr);
-        return new LoadResult(Map.of(), noFailures);
+        return new LoadResult(Map.of(), interrupted);
       }
 
       // Step 3: Decryption and conversion (CPU-bound, can take up to a minute)
@@ -553,7 +566,7 @@ public class SignerLoader implements Closeable {
       // Check if IOException was caused by interruption
       if (Thread.currentThread().isInterrupted()) {
         LOG.debug("File processing interrupted during IO: {}", pathStr);
-        return new LoadResult(Map.of(), noFailures);
+        return new LoadResult(Map.of(), interrupted);
       }
       LOG.error("Error reading metadata config file: {}", pathStr, e);
       return new LoadResult(Map.of(), Set.of(pathStr));
@@ -563,7 +576,7 @@ public class SignerLoader implements Closeable {
           || e instanceof InterruptedException
           || (e.getCause() != null && e.getCause() instanceof InterruptedException)) {
         LOG.debug("File processing cancelled: {}", pathStr);
-        return new LoadResult(Map.of(), noFailures);
+        return new LoadResult(Map.of(), interrupted);
       }
       LOG.error("Unexpected error processing file: {}", pathStr, e);
       return new LoadResult(Map.of(), Set.of(pathStr));

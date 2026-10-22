@@ -4,7 +4,7 @@
 ### Features Added
 
 ### Bugs Fixed
-- `POST /reload` no longer disables validators when a keystore source fails to load: a file or source that fails keeps its previously loaded keys, while deleted keys are still removed in the same reload. [#1248][issue_1248] [#1252][issue_1252] Fix via [#1251][PR_1251].
+- `POST /reload` no longer disables validators when a keystore source fails to load: a file or source that fails keeps its previously loaded keys (commit-boost proxy keys included), while deleted keys are still removed in the same reload. A directory that can be read and is empty counts as all of its keys deleted. [#1248][issue_1248] [#1252][issue_1252] Fix via [#1251][PR_1251].
 
 ### Breaking Changes
 

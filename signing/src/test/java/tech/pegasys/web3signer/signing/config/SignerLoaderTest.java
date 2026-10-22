@@ -52,6 +52,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -799,6 +801,40 @@ class SignerLoaderTest {
     assertThatThrownBy(() -> signerLoader.load(signerParser))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("SignerLoader instance has been closed");
+  }
+
+  @Test
+  void filesNotProcessedBeforeLoaderIsClosedAreReportedAsFailed() throws Exception {
+    final Set<String> files =
+        Set.of(
+            configsDirectory.resolve("1.yaml").toString(),
+            configsDirectory.resolve("2.yaml").toString());
+    signerLoader.close();
+
+    final SignerLoader.LoadResult result =
+        signerLoader.processInBatches(files, signerParser, new AtomicLong(), files.size());
+
+    // the files were not deleted, so their previously loaded signers must be kept
+    assertThat(result.loadedSigners()).isEmpty();
+    assertThat(result.failedPaths()).containsExactlyInAnyOrderElementsOf(files);
+  }
+
+  @Test
+  void interruptedFileIsReportedAsFailed() throws Exception {
+    final Path file =
+        createFileInConfigsDirectory(
+            configFileName(blsKeyPair1), blsKeyPair1.getSecretKey().toBytes().toHexString());
+
+    final SignerLoader.LoadResult result;
+    Thread.currentThread().interrupt();
+    try {
+      result = signerLoader.processFile(file.toString(), signerParser, new AtomicLong(), 1);
+    } finally {
+      Thread.interrupted();
+    }
+
+    assertThat(result.loadedSigners()).isEmpty();
+    assertThat(result.failedPaths()).containsExactly(file.toString());
   }
 
   @Test
