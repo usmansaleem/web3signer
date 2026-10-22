@@ -13,8 +13,8 @@
 package tech.pegasys.web3signer.signing.config;
 
 import tech.pegasys.web3signer.common.config.SignerLoaderConfig;
-import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
+import tech.pegasys.web3signer.signing.config.SignerSourceResult.LoadedSigner;
 import tech.pegasys.web3signer.signing.config.metadata.SigningMetadata;
 import tech.pegasys.web3signer.signing.config.metadata.SigningMetadataException;
 import tech.pegasys.web3signer.signing.config.metadata.parser.SignerParser;
@@ -29,10 +29,10 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -79,6 +79,7 @@ import org.apache.logging.log4j.Logger;
 public class SignerLoader implements Closeable {
   private static final Logger LOG = LogManager.getLogger();
   private static final Set<String> CONFIG_FILE_EXTENSIONS = Set.of("yaml", "yml");
+  private static final String SOURCE_NAME = "key config files";
 
   private volatile Map<String, CachedSignerData> cachedArtifactSigners = Collections.emptyMap();
   private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -118,15 +119,18 @@ public class SignerLoader implements Closeable {
    *   <li>Modified files (based on last modified time) are reprocessed
    *   <li>Deleted files are removed from cache
    *   <li>Unchanged files remain in cache without reprocessing
-   *   <li>Files that fail to load keep their previously cached signers (and are retried on the next
-   *       load)
    * </ul>
    *
+   * <p>The returned result names the file each signer was loaded from and lists the files that
+   * failed, so that {@link DefaultArtifactSignerProvider} can keep the signers of files that failed
+   * while removing the signers of files that were deleted.
+   *
    * @param signerParser An implementation of SignerParser to parse the metadata files
-   * @return A MappedResults of ArtifactSigners and error count
+   * @return the loaded signers with the file each one came from, the failed files and the error
+   *     count
    * @throws IllegalStateException if this SignerLoader has been closed
    */
-  public MappedResults<ArtifactSigner> load(final SignerParser signerParser) {
+  public SignerSourceResult load(final SignerParser signerParser) {
     if (closed.get()) {
       throw new IllegalStateException("SignerLoader instance has been closed");
     }
@@ -139,17 +143,10 @@ public class SignerLoader implements Closeable {
       availableFilesWithTime = getMetadataConfigFilesWithTime();
     } catch (final IOException e) {
       LOG.error("Unable to access the supplied key directory", e);
-      final Collection<ArtifactSigner> retainedSigners = cachedSigners();
-      if (!retainedSigners.isEmpty()) {
-        LOG.warn(
-            "Unable to access the supplied key directory; retaining {} previously loaded signer(s)",
-            retainedSigners.size());
-      }
-      return MappedResults.newInstance(retainedSigners, 1);
+      return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
     // Get new cache by removing entries that doesn't exist or has modified time
-    final Map<String, CachedSignerData> previousCache = cachedArtifactSigners;
     final Map<String, CachedSignerData> newCache = getNewCacheMap(availableFilesWithTime);
 
     // Find files to process (new + modified)
@@ -175,72 +172,33 @@ public class SignerLoader implements Closeable {
           LOG.trace("Added {} signers from {}", signers.size(), pathStr);
         });
 
-    // A file that is present but failed keeps its previously cached signers. The old modified time
-    // is kept, so the file is treated as modified and reprocessed on every load until it succeeds
-    // or is deleted.
-    for (final String failedPath : loadResult.failedPaths()) {
-      final CachedSignerData previous = previousCache.get(failedPath);
-      if (previous != null) {
-        newCache.put(failedPath, previous);
-        LOG.warn(
-            "Metadata file {} failed to load; retaining {} previously loaded signer(s) from it",
-            failedPath,
-            previous.signers().size());
-      }
-    }
-
     // Update the volatile reference with the new immutable map
     cachedArtifactSigners = Map.copyOf(newCache);
 
-    // Return all ArtifactSigners from the cache
-    final Collection<ArtifactSigner> allArtifactSigners = cachedSigners();
+    // a signer can be defined by more than one file: keep the first occurrence
+    final Map<String, LoadedSigner> uniqueSigners = new LinkedHashMap<>();
+    cachedArtifactSigners
+        .values()
+        .forEach(
+            cached ->
+                cached
+                    .signers()
+                    .forEach(
+                        signer ->
+                            uniqueSigners.putIfAbsent(
+                                signer.getIdentifier(),
+                                new LoadedSigner(signer, Optional.of(cached.filePath())))));
+    final List<LoadedSigner> loadedSigners = List.copyOf(uniqueSigners.values());
 
     LOG.info(
         "Total Artifact Signers loaded via configuration files: {}\nTotal Paths cached: {}, Error count: {}\nTime Taken: {}.",
-        allArtifactSigners.size(),
+        loadedSigners.size(),
         cachedArtifactSigners.size(),
         loadResult.errorCount(),
         calculateTimeTaken(loadStartTime).orElse("unknown duration"));
 
-    return MappedResults.newInstance(allArtifactSigners, loadResult.errorCount());
-  }
-
-  private Collection<ArtifactSigner> cachedSigners() {
-    return cachedArtifactSigners.values().stream()
-        .map(CachedSignerData::signers)
-        .flatMap(Collection::stream)
-        .collect(Collectors.toSet());
-  }
-
-  /**
-   * Forgets the cached signer with the given identifier, so that it is not re-supplied when a later
-   * load cannot list the configuration directory. Called when the signer was removed at runtime
-   * (e.g. via the key manager API). Must be called from the thread that serializes loads.
-   *
-   * @param identifier identifier of the signer to forget
-   */
-  public void evict(final String identifier) {
-    final Map<String, CachedSignerData> updated = new HashMap<>();
-    boolean changed = false;
-    for (final CachedSignerData cached : cachedArtifactSigners.values()) {
-      if (cached.signers().stream().noneMatch(s -> s.getIdentifier().equals(identifier))) {
-        updated.put(cached.filePath(), cached);
-        continue;
-      }
-      changed = true;
-      final Set<ArtifactSigner> remaining =
-          cached.signers().stream()
-              .filter(s -> !s.getIdentifier().equals(identifier))
-              .collect(Collectors.toUnmodifiableSet());
-      if (!remaining.isEmpty()) {
-        updated.put(
-            cached.filePath(),
-            new CachedSignerData(cached.filePath(), cached.lastModifiedTime(), remaining));
-      }
-    }
-    if (changed) {
-      cachedArtifactSigners = Map.copyOf(updated);
-    }
+    return new SignerSourceResult(
+        SOURCE_NAME, loadedSigners, loadResult.failedPaths(), loadResult.errorCount(), false);
   }
 
   /**

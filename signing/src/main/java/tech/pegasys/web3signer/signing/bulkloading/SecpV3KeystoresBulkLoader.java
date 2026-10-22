@@ -12,10 +12,11 @@
  */
 package tech.pegasys.web3signer.signing.bulkloading;
 
-import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.EthSecpArtifactSigner;
 import tech.pegasys.web3signer.signing.K256ArtifactSigner;
+import tech.pegasys.web3signer.signing.config.SignerSourceResult;
+import tech.pegasys.web3signer.signing.config.SignerSourceResult.LoadedSigner;
 import tech.pegasys.web3signer.signing.secp256k1.filebased.CredentialSigner;
 import tech.pegasys.web3signer.signing.secp256k1.util.JsonFilesUtil;
 
@@ -24,6 +25,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.logging.log4j.LogManager;
@@ -33,18 +37,14 @@ import org.web3j.crypto.WalletUtils;
 import org.web3j.crypto.exception.CipherException;
 
 /**
- * Bulk-loads SECP256K1 v3 keystores. An instance remembers what was loaded from each directory so a
- * keystore or source that fails to load keeps its previously loaded key, while a keystore that is
- * no longer listed is dropped. Loads must be serialized by the caller.
- *
- * <p>An instance must only ever be used with one {@code ethereumSECPCompatible} value, i.e. either
- * with {@link #loadV3KeystoresUsingPasswordFileOrDir} or with {@link #loadECDSAProxyKeystores},
- * because the cached signers are keyed by directory only.
+ * Bulk-loads SECP256K1 v3 keystores from a directory. The result names the keystore file of every
+ * loaded signer and lists the keystore files that failed to load, so that {@link
+ * tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider} can keep the signers of
+ * failed files while dropping the signers of deleted files.
  */
 public class SecpV3KeystoresBulkLoader {
   private static final Logger LOG = LogManager.getLogger();
-
-  private final KeystoreSignerCache cache = new KeystoreSignerCache();
+  private static final String SOURCE_NAME = "v3 keystores";
 
   /**
    * Bulk-load Ethereum compatible SECP Artifact Signers from encrypted v3 keystores.
@@ -52,9 +52,9 @@ public class SecpV3KeystoresBulkLoader {
    * @param keystoresPath Path to the directory containing the v3 keystores
    * @param pwrdFileOrDirPath Path to the password file or directory containing the passwords for
    *     the v3 keystores
-   * @return MappedResults containing the loaded ArtifactSigners
+   * @return the loaded ArtifactSigners with their keystore files and the failed keystore files
    */
-  public MappedResults<ArtifactSigner> loadV3KeystoresUsingPasswordFileOrDir(
+  public static SignerSourceResult loadV3KeystoresUsingPasswordFileOrDir(
       final Path keystoresPath, final Path pwrdFileOrDirPath) {
     return loadV3KeystoresUsingPasswordFileOrDir(keystoresPath, pwrdFileOrDirPath, true);
   }
@@ -67,20 +67,20 @@ public class SecpV3KeystoresBulkLoader {
    * @param keystoresPath Path to the directory containing the v3 keystores
    * @param pwrdFileOrDirPath Path to the password file or directory containing the passwords for
    *     the v3 keystores
-   * @return MappedResults containing the loaded ArtifactSigners
+   * @return the loaded ArtifactSigners with their keystore files and the failed keystore files
    */
-  public MappedResults<ArtifactSigner> loadECDSAProxyKeystores(
+  public static SignerSourceResult loadECDSAProxyKeystores(
       final Path keystoresPath, final Path pwrdFileOrDirPath) {
     return loadV3KeystoresUsingPasswordFileOrDir(keystoresPath, pwrdFileOrDirPath, false);
   }
 
-  private MappedResults<ArtifactSigner> loadV3KeystoresUsingPasswordFileOrDir(
+  private static SignerSourceResult loadV3KeystoresUsingPasswordFileOrDir(
       final Path keystoresPath,
       final Path pwrdFileOrDirPath,
       final boolean ethereumSECPCompatible) {
     if (!Files.exists(pwrdFileOrDirPath)) {
       LOG.error("Password file or directory doesn't exist.");
-      return cache.retainAllOnSourceError(keystoresPath);
+      return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
     final List<Path> keystoresFiles;
@@ -88,7 +88,7 @@ public class SecpV3KeystoresBulkLoader {
       keystoresFiles = JsonFilesUtil.loadJsonExtPaths(keystoresPath);
     } catch (final IOException e) {
       LOG.error("Error listing v3 keystores paths {}", keystoresPath);
-      return cache.retainAllOnSourceError(keystoresPath);
+      return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
     final PasswordReader passwordReader;
@@ -100,19 +100,31 @@ public class SecpV3KeystoresBulkLoader {
         passwordReader = passwordFile -> password;
       } catch (final IOException e) {
         LOG.error("Unable to read password file.", e);
-        return cache.retainAllOnSourceError(keystoresPath);
+        return SignerSourceResult.sourceFailure(SOURCE_NAME);
       }
     } else {
       LOG.error(
           "Unexpected path. Expecting it to be a regular file or directory. {}", pwrdFileOrDirPath);
-      return cache.retainAllOnSourceError(keystoresPath);
+      return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
-    return cache.load(
-        keystoresPath,
-        keystoresFiles,
-        keystoreFile ->
-            createSecpArtifactSigner(keystoreFile, passwordReader, ethereumSECPCompatible));
+    final ConcurrentLinkedQueue<LoadedSigner> signers = new ConcurrentLinkedQueue<>();
+    final Set<String> failedFiles = ConcurrentHashMap.newKeySet();
+
+    keystoresFiles.parallelStream()
+        .forEach(
+            keystoreFile -> {
+              final Optional<ArtifactSigner> signer =
+                  createSecpArtifactSigner(keystoreFile, passwordReader, ethereumSECPCompatible);
+              if (signer.isPresent()) {
+                signers.add(new LoadedSigner(signer.get(), Optional.of(keystoreFile.toString())));
+              } else {
+                failedFiles.add(keystoreFile.toString());
+              }
+            });
+
+    return new SignerSourceResult(
+        SOURCE_NAME, List.copyOf(signers), failedFiles, failedFiles.size(), false);
   }
 
   private static Optional<ArtifactSigner> createSecpArtifactSigner(

@@ -15,7 +15,6 @@ package tech.pegasys.web3signer.signing.config;
 import static tech.pegasys.web3signer.signing.KeyType.BLS;
 import static tech.pegasys.web3signer.signing.KeyType.SECP256K1;
 
-import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.KeyType;
@@ -26,6 +25,7 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -34,8 +34,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -77,17 +75,25 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
 
   private static final Logger LOG = LogManager.getLogger();
 
-  // MappedResults = Collection + Error count
-  private final Supplier<MappedResults<ArtifactSigner>> artifactSignerResultsSupplier;
+  private final Supplier<List<SignerSourceResult>> artifactSignerResultsSupplier;
   private final Optional<BiConsumer<Set<String>, Set<String>>> postLoadingCallback;
   private final Optional<KeystoresParameters> commitBoostKeystoresParameters;
-  private final Consumer<String> signerRemovedListener;
 
   // Volatile references to immutable maps - readers see atomic snapshots
-  private volatile SignerState state = new SignerState(Map.of(), Map.of());
+  private volatile SignerState state = new SignerState(Map.of(), Map.of(), Map.of());
 
   private record SignerState(
-      Map<String, ArtifactSigner> signers, Map<String, Set<ArtifactSigner>> proxySigners) {}
+      Map<String, ArtifactSigner> signers,
+      Map<String, Set<ArtifactSigner>> proxySigners,
+      Map<String, Provenance> provenance) {}
+
+  /**
+   * Where a signer was loaded from.
+   *
+   * @param source name of the loader source the signer came from
+   * @param file file the signer was loaded from, {@code null} for vault sources
+   */
+  private record Provenance(String source, String file) {}
 
   private final ExecutorService executorService =
       Executors.newSingleThreadExecutor(
@@ -98,30 +104,12 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           });
 
   public DefaultArtifactSignerProvider(
-      final Supplier<MappedResults<ArtifactSigner>> artifactSignerResultsSupplier,
+      final Supplier<List<SignerSourceResult>> artifactSignerResultsSupplier,
       final Optional<BiConsumer<Set<String>, Set<String>>> postLoadingCallback,
       final Optional<KeystoresParameters> commitBoostKeystoresParameters) {
-    this(
-        artifactSignerResultsSupplier,
-        postLoadingCallback,
-        commitBoostKeystoresParameters,
-        identifier -> {});
-  }
-
-  /**
-   * @param signerRemovedListener invoked with the identifier of a signer removed via {@link
-   *     #removeSigner(String)}, on the loading executor, so that loaders can forget it instead of
-   *     re-supplying it after a later failed load
-   */
-  public DefaultArtifactSignerProvider(
-      final Supplier<MappedResults<ArtifactSigner>> artifactSignerResultsSupplier,
-      final Optional<BiConsumer<Set<String>, Set<String>>> postLoadingCallback,
-      final Optional<KeystoresParameters> commitBoostKeystoresParameters,
-      final Consumer<String> signerRemovedListener) {
     this.artifactSignerResultsSupplier = artifactSignerResultsSupplier;
     this.postLoadingCallback = postLoadingCallback;
     this.commitBoostKeystoresParameters = commitBoostKeystoresParameters;
-    this.signerRemovedListener = signerRemovedListener;
   }
 
   /**
@@ -148,8 +136,10 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    * <p><b>Error Handling:</b> Individual signer loading failures (e.g., malformed keystores,
    * invalid keys) are counted but do not prevent the loading of other valid signers. Successfully
    * loaded signers are made available even if some configurations fail. The returned error count
-   * allows callers to detect partial failures. Loaders re-supply the previously loaded signer for a
-   * file or source that failed, so a missing signer in the result means it was genuinely removed.
+   * allows callers to detect partial failures. A previously loaded signer that is missing from the
+   * results is kept when its source failed as a whole or its own file failed to load, so that a
+   * failure does not look like a removal; a signer that is missing while its source loaded
+   * completely is genuinely removed.
    *
    * <p>This method is typically invoked:
    *
@@ -170,28 +160,30 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   public Future<Long> load() {
     return executorService.submit(
         () -> {
-          // proxy keystores are loaded statelessly: no cross-reload retention for proxies
-          final BlsKeystoreBulkLoader proxyBlsLoader = new BlsKeystoreBulkLoader();
-          final SecpV3KeystoresBulkLoader proxySecpLoader = new SecpV3KeystoresBulkLoader();
           final SignerState currentState = this.state;
           LOG.debug("Signer keys pre-loaded in memory {}", currentState.signers.size());
 
-          // Get MappedResults - includes error count
-          final MappedResults<ArtifactSigner> results = artifactSignerResultsSupplier.get();
-          final long errorCount = results.getErrorCount();
+          // Get per-source results - includes error counts and the failed files of each source
+          final List<SignerSourceResult> results = artifactSignerResultsSupplier.get();
+          final long errorCount = results.stream().mapToLong(SignerSourceResult::errorCount).sum();
 
-          // Build new signers map from successful results
-          final Map<String, ArtifactSigner> newSigners =
-              results.getValues().stream()
-                  .collect(
-                      Collectors.toMap(
-                          ArtifactSigner::getIdentifier,
-                          Function.identity(),
-                          (signer1, signer2) -> {
-                            LOG.warn(
-                                "Duplicate key found while loading: {}", signer1.getIdentifier());
-                            return signer1;
-                          }));
+          // Build new signers map from successful results, remembering where each one came from
+          final Map<String, ArtifactSigner> newSigners = new HashMap<>();
+          final Map<String, Provenance> newProvenance = new HashMap<>();
+          for (final SignerSourceResult result : results) {
+            for (final SignerSourceResult.LoadedSigner loaded : result.signers()) {
+              final String identifier = loaded.signer().getIdentifier();
+              if (newSigners.putIfAbsent(identifier, loaded.signer()) != null) {
+                LOG.warn("Duplicate key found while loading: {}", identifier);
+                continue;
+              }
+              newProvenance.put(
+                  identifier, new Provenance(result.source(), loaded.file().orElse(null)));
+            }
+          }
+
+          retainSignersOfFailedSources(
+              currentState, results, errorCount, newSigners, newProvenance);
 
           // Build new proxy signers map
           final Map<String, Set<ArtifactSigner>> newProxySigners = new HashMap<>();
@@ -212,14 +204,14 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
                                   keystoreParameter,
                                   consensusPubKey,
                                   SECP256K1.name(),
-                                  proxySecpLoader::loadECDSAProxyKeystores);
+                                  SecpV3KeystoresBulkLoader::loadECDSAProxyKeystores);
 
                               loadProxySignersInto(
                                   proxies,
                                   keystoreParameter,
                                   consensusPubKey,
                                   BLS.name(),
-                                  proxyBlsLoader::loadKeystoresUsingPasswordFile);
+                                  BlsKeystoreBulkLoader::loadKeystoresUsingPasswordFile);
 
                               if (!proxies.isEmpty()) {
                                 newProxySigners.put(consensusPubKey, Set.copyOf(proxies));
@@ -230,7 +222,9 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
           // threads
-          state = new SignerState(Map.copyOf(newSigners), Map.copyOf(newProxySigners));
+          state =
+              new SignerState(
+                  Map.copyOf(newSigners), Map.copyOf(newProxySigners), Map.copyOf(newProvenance));
 
           // Compute delta and invoke callback only when callback is configured
           postLoadingCallback.ifPresent(
@@ -314,8 +308,10 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
 
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
-          // threads
-          state = new SignerState(Map.copyOf(newSigners), Map.copyOf(newProxySigners));
+          // threads. The signer was added at runtime, so it has no source provenance.
+          state =
+              new SignerState(
+                  Map.copyOf(newSigners), Map.copyOf(newProxySigners), currentState.provenance);
           LOG.info("Loaded new signer for identifier '{}'", signer.getIdentifier());
           return null;
         });
@@ -332,13 +328,16 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           final Map<String, Set<ArtifactSigner>> newProxySigners =
               new HashMap<>(currentState.proxySigners);
           newProxySigners.remove(identifier);
+          final Map<String, Provenance> newProvenance = new HashMap<>(currentState.provenance);
+          newProvenance.remove(identifier);
 
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
           // threads
-          this.state = new SignerState(Map.copyOf(newSigners), Map.copyOf(newProxySigners));
+          this.state =
+              new SignerState(
+                  Map.copyOf(newSigners), Map.copyOf(newProxySigners), Map.copyOf(newProvenance));
 
-          signerRemovedListener.accept(identifier);
           LOG.info("Removed signer with identifier '{}'", identifier);
           return null;
         });
@@ -381,7 +380,9 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
           // threads
-          this.state = new SignerState(currentState.signers, Map.copyOf(newProxySigners));
+          this.state =
+              new SignerState(
+                  currentState.signers, Map.copyOf(newProxySigners), currentState.provenance);
 
           LOG.info(
               "Loaded new proxy signer {} for consensus public key '{}'",
@@ -435,15 +436,70 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final KeystoresParameters keystoreParameter,
       final String consensusPubKey,
       final String keyType,
-      final BiFunction<Path, Path, MappedResults<ArtifactSigner>> loaderFunction) {
+      final BiFunction<Path, Path, SignerSourceResult> loaderFunction) {
 
     final Path identifierPath = keystoreParameter.getKeystoresPath().resolve(consensusPubKey);
     final Path proxyDir = identifierPath.resolve(keyType);
 
     if (canReadFromDirectory(proxyDir)) {
-      final MappedResults<ArtifactSigner> signersResult =
+      final SignerSourceResult signersResult =
           loaderFunction.apply(proxyDir, keystoreParameter.getKeystoresPasswordFile());
-      targetSet.addAll(signersResult.getValues());
+      targetSet.addAll(signersResult.artifactSigners());
     }
+  }
+
+  /**
+   * Keeps the previously loaded signers that are missing from this load because their source failed
+   * as a whole or their own file failed to load. Only the loaders can tell a deleted key from an
+   * unreadable one, so removing such signers would disable validators in the slashing protection
+   * database.
+   */
+  private static void retainSignersOfFailedSources(
+      final SignerState currentState,
+      final List<SignerSourceResult> results,
+      final long errorCount,
+      final Map<String, ArtifactSigner> newSigners,
+      final Map<String, Provenance> newProvenance) {
+    int retainedCount = 0;
+    for (final Map.Entry<String, ArtifactSigner> previous : currentState.signers.entrySet()) {
+      final String identifier = previous.getKey();
+      if (newSigners.containsKey(identifier)) {
+        continue;
+      }
+      final Provenance provenance = currentState.provenance.get(identifier);
+      if (!failedToLoad(provenance, results, errorCount)) {
+        continue;
+      }
+      newSigners.put(identifier, previous.getValue());
+      if (provenance != null) {
+        newProvenance.put(identifier, provenance);
+      }
+      retainedCount++;
+    }
+
+    if (retainedCount > 0) {
+      LOG.warn(
+          "Retained {} previously loaded key(s) whose source or file failed to load; a successful load of their source removes them",
+          retainedCount);
+    }
+  }
+
+  /**
+   * A missing signer is kept when the load failed for its source as a whole or for the file it was
+   * loaded from. A signer added at runtime (key manager API) has no provenance: nothing in the load
+   * results can confirm its removal, so it is kept while any source reports errors.
+   */
+  private static boolean failedToLoad(
+      final Provenance provenance, final List<SignerSourceResult> results, final long errorCount) {
+    if (provenance == null) {
+      return errorCount > 0;
+    }
+    return results.stream()
+        .filter(result -> result.source().equals(provenance.source()))
+        .anyMatch(
+            result ->
+                result.sourceFailed()
+                    || (provenance.file() != null
+                        && result.failedFiles().contains(provenance.file())));
   }
 }
