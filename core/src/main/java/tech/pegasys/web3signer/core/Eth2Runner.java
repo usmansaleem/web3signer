@@ -291,14 +291,15 @@ public class Eth2Runner extends Runner {
 
   private void registerSignerLoadingHealthCheck(
       final String name, final SignerSourceResult result) {
+    // capture the counts only: the lambda lives until the next reload, the loaded signers need not
+    final int keysLoaded = result.signers().size();
+    final int errorCount = result.errorCount();
     super.registerHealthCheckProcedure(
         name,
         promise -> {
           final JsonObject statusJson =
-              new JsonObject()
-                  .put("keys-loaded", result.signers().size())
-                  .put("error-count", result.errorCount());
-          promise.complete(result.errorCount() > 0 ? Status.KO(statusJson) : Status.OK(statusJson));
+              new JsonObject().put("keys-loaded", keysLoaded).put("error-count", errorCount);
+          promise.complete(errorCount > 0 ? Status.KO(statusJson) : Status.OK(statusJson));
         });
   }
 
