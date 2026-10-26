@@ -94,16 +94,13 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       Map<String, Provenance> proxyProvenance) {}
 
   /**
-   * Where a signer was loaded from. A key loaded from more than one file has one entry per file,
-   * chained through {@code next}, so that it is kept while any of them fails to load; the common
-   * single-file key costs one object. Entries of signers removed through {@link #removeSigner} are
-   * left in place: retention only consults the provenance of signers that are still loaded, and
-   * every {@link #load()} rebuilds the provenance maps from its results.
+   * Where a signer was loaded from. A key defined by several files has one entry per file, chained
+   * through {@code next}. Entries of keys removed via {@link #removeSigner} stay until the next
+   * {@link #load()}; retention only looks at loaded keys.
    *
-   * @param source name of the loader source the signer came from; the proxy keystore directory for
-   *     proxy signers
-   * @param file file the signer was loaded from, {@code null} for vault sources
-   * @param next another place the same key was loaded from, {@code null} if none
+   * @param source loader source; the proxy keystore directory for proxy signers
+   * @param file source file, {@code null} for vaults
+   * @param next another file the same key was loaded from, or {@code null}
    */
   private record Provenance(String source, String file, Provenance next) {
 
@@ -162,9 +159,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    *   <li>Builds a new immutable signers map from successfully loaded signers, handling duplicate
    *       keys by keeping the first signer and logging a warning
    *   <li>If commit boost parameters are enabled, loads proxy signers for each consensus public
-   *       key, keeping previously loaded proxy signers whose directory or file failed to load
-   *   <li>Atomically swaps the volatile references to the new immutable maps, unless the load was
-   *       interrupted
+   *       key, keeping those whose directory or file failed to load
+   *   <li>Atomically swaps the volatile references to the new immutable maps, unless interrupted
    *   <li>Invokes the optional post-loading callback (e.g., for slashing protection registration)
    * </ol>
    *
@@ -175,10 +171,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    * <p><b>Error Handling:</b> Individual signer loading failures (e.g., malformed keystores,
    * invalid keys) are counted but do not prevent the loading of other valid signers. Successfully
    * loaded signers are made available even if some configurations fail. The returned error count
-   * allows callers to detect partial failures. A previously loaded signer that is missing from the
-   * results is kept when its source failed as a whole or its own file failed to load, so that a
-   * failure does not look like a removal; a signer that is missing while its source loaded
-   * completely is genuinely removed.
+   * allows callers to detect partial failures. A missing signer is kept if its source or one of its
+   * files failed to load; otherwise it is removed.
    *
    * <p>This method is typically invoked:
    *
@@ -202,11 +196,11 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           final SignerState currentState = this.state;
           LOG.debug("Signer keys pre-loaded in memory {}", currentState.signers.size());
 
-          // Get per-source results - includes error counts and the failed files of each source
+          // per-source results, with failed files and error counts
           final List<SignerSourceResult> results = artifactSignerResultsSupplier.get();
           final long errorCount = results.stream().mapToLong(SignerSourceResult::errorCount).sum();
 
-          // Build new signers map from successful results, remembering where each one came from
+          // build the new signers map and record where each signer came from
           final Map<String, ArtifactSigner> newSigners = new HashMap<>();
           final Map<String, Provenance> newProvenance = new HashMap<>();
           for (final SignerSourceResult result : results) {
@@ -239,8 +233,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
                           newProxySigners,
                           newProxyProvenance));
 
-          // An interrupted load (shutdown) may be missing signers that were not deleted: keep the
-          // current state rather than publishing it and reporting them as removed
+          // an interrupted load (shutdown) may miss keys that were not deleted: publish nothing
           if (Thread.currentThread().isInterrupted()) {
             LOG.warn("Signer loading was interrupted; keeping the currently loaded signers");
             throw new CancellationException("Signer loading was interrupted");
@@ -338,8 +331,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
 
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
-          // threads. The signer was added at runtime, so it has no source provenance; an entry
-          // left behind by an earlier removeSigner of the same key is dropped.
+          // threads. A runtime-added signer has no provenance; drop any stale entry.
           state =
               new SignerState(
                   Map.copyOf(newSigners),
@@ -365,8 +357,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
 
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
-          // threads. Provenance is left in place (see Provenance) to keep removal at two map
-          // copies.
+          // threads. Provenance is left in place (see Provenance).
           this.state =
               new SignerState(
                   Map.copyOf(newSigners),
@@ -438,7 +429,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
     executorService.shutdownNow();
   }
 
-  /** Copies the map without the key only when the key is present; otherwise returns it as is. */
+  /** Returns the map without the key, copying only if the key is present. */
   private static Map<String, Provenance> withoutEntry(
       final Map<String, Provenance> provenance, final String identifier) {
     if (!provenance.containsKey(identifier)) {
@@ -457,11 +448,9 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    * {keystoresPath}/{consensusPubKey}/{keyType}/
    * </pre>
    *
-   * <p>A previously loaded proxy signer that is missing is kept only when its directory failed as a
-   * whole (unreadable directory or password file) or its own file failed to load; a proxy directory
-   * that does not exist, or exists but is empty, has no proxy signers. When the keystores path
-   * itself cannot be read, every previously loaded proxy signer is kept. The password file is read
-   * at most once per load, and only when a proxy directory exists.
+   * <p>A missing proxy signer is kept if its directory (unreadable directory or password file) or
+   * its file failed to load; a missing or empty directory has no proxy signers. If the keystores
+   * path cannot be read, all proxy signers are kept. The password file is read at most once.
    */
   private static void loadProxySigners(
       final KeystoresParameters keystoreParameter,
@@ -471,7 +460,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final Map<String, Provenance> newProxyProvenance) {
     final Path keystoresPath = keystoreParameter.getKeystoresPath();
     if (!Files.isDirectory(keystoresPath) || !Files.isReadable(keystoresPath)) {
-      // nothing generated yet is normal; losing a path that held proxy keys is a failure
+      // no path yet is normal; losing one that held proxy keys is a failure
       final boolean hadProxies =
           currentState.proxySigners.values().stream().anyMatch(proxies -> !proxies.isEmpty());
       if (hadProxies) {
@@ -572,7 +561,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final Map<String, Provenance> newProxyProvenance) {
     final Provenance provenance = currentState.proxyProvenance.get(identifier);
     if (provenance != null) {
-      // the same proxy key may have been loaded for another consensus key in this load
+      // the same proxy key may also be loaded for another consensus key
       newProxyProvenance.merge(identifier, provenance, Provenance::merge);
     }
   }
@@ -588,11 +577,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   }
 
   /**
-   * Loads the proxy keystores of one consensus key and key type. Returns empty only when the
-   * directory is known not to exist (no proxy keys); a directory whose existence cannot be
-   * determined (e.g. an inaccessible parent) is handed to the loader, which fails it as a whole.
-   * The result is named after the directory so that the provenance of each proxy signer identifies
-   * it; an unreadable password file fails the directory as a whole.
+   * Loads the proxy keystores of one consensus key and key type, as a source named after the
+   * directory. Empty only if the directory is known not to exist.
    */
   private static Optional<SignerSourceResult> loadProxyDir(
       final Path keystoresPath,
@@ -601,7 +587,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final Supplier<Optional<String>> password,
       final BiFunction<Path, String, SignerSourceResult> loaderFunction) {
     final Path proxyDir = keystoresPath.resolve(consensusPubKey).resolve(keyType.name());
-    // Files.exists is also false when existence cannot be determined, which would look deleted
+    // not Files.exists: it is also false when existence cannot be determined
     if (Files.notExists(proxyDir)) {
       return Optional.empty();
     }
@@ -620,10 +606,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   }
 
   /**
-   * Keeps the previously loaded signers that are missing from this load because their source failed
-   * as a whole or their own file failed to load. Only the loaders can tell a deleted key from an
-   * unreadable one, so removing such signers would disable validators in the slashing protection
-   * database.
+   * Keeps previously loaded signers that are missing because their source or file failed to load,
+   * so a failure is not reported as a removal (and does not disable them in slashing protection).
    */
   private static void retainSignersOfFailedSources(
       final SignerState currentState,
@@ -656,9 +640,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   }
 
   /**
-   * A missing signer is kept when the load failed for its source as a whole or for any file it was
-   * loaded from. A signer added at runtime (key manager API) has no provenance: nothing in the load
-   * results can confirm its removal, so it is kept while any source reports errors.
+   * Whether a missing signer's source or any of its files failed. A runtime-added signer has no
+   * provenance, so it is kept while any source reports errors.
    */
   private static boolean failedToLoad(
       final Provenance provenance, final List<SignerSourceResult> results, final long errorCount) {

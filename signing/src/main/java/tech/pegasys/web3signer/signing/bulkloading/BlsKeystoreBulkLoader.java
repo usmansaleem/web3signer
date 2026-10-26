@@ -38,12 +38,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-/**
- * Bulk-loads BLS keystores from a directory. The result names the keystore file of every loaded
- * signer and lists the keystore files that failed to load, so that {@link
- * tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider} can keep the signers of
- * failed files while dropping the signers of deleted files.
- */
+/** Bulk-loads BLS keystores; reports each signer's file and the files that failed. */
 public class BlsKeystoreBulkLoader {
   private static final Logger LOG = LogManager.getLogger();
   private static final String SOURCE_NAME = "bls keystores";
@@ -80,10 +75,7 @@ public class BlsKeystoreBulkLoader {
     return loadKeystoresUsingPassword(keystoresDirectory, password);
   }
 
-  /**
-   * Loads every keystore in the directory with the same, already read, password. Used for proxy
-   * keystores, whose password file is read once per load for all proxy directories.
-   */
+  /** Loads every keystore with an already read password (proxy keystores). */
   public static SignerSourceResult loadKeystoresUsingPassword(
       final Path keystoresDirectory, final String password) {
     final List<Path> keystoreFiles;

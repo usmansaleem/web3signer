@@ -91,8 +91,7 @@ public class SignerLoader implements Closeable {
    * Result of loading signers from configuration files.
    *
    * @param loadedSigners map of file paths to their loaded artifact signers
-   * @param failedPaths paths of files that were present but failed to load; each counts as one
-   *     error
+   * @param failedPaths files present but failed to load; one error each
    */
   @VisibleForTesting
   record LoadResult(Map<String, Set<ArtifactSigner>> loadedSigners, Set<String> failedPaths) {
@@ -120,13 +119,8 @@ public class SignerLoader implements Closeable {
    *   <li>Unchanged files remain in cache without reprocessing
    * </ul>
    *
-   * <p>The returned result names the file each signer was loaded from and lists the files that
-   * failed, so that {@link DefaultArtifactSignerProvider} can keep the signers of files that failed
-   * while removing the signers of files that were deleted.
-   *
    * @param signerParser An implementation of SignerParser to parse the metadata files
-   * @return the loaded signers with the file each one came from, the failed files and the error
-   *     count
+   * @return the loaded signers with their files, the failed files and the error count
    * @throws IllegalStateException if this SignerLoader has been closed
    */
   public SignerSourceResult load(final SignerParser signerParser) {
@@ -174,8 +168,7 @@ public class SignerLoader implements Closeable {
     // Update the volatile reference with the new immutable map
     cachedArtifactSigners = Map.copyOf(newCache);
 
-    // a signer can be defined by more than one file: report every file it was loaded from, so that
-    // the provider keeps it while any of them fails to load
+    // one entry per file, so that a key defined by several files is kept while any of them fails
     final SignerSourceResult result =
         new SignerSourceResult(
             SOURCE_NAME,
@@ -192,7 +185,7 @@ public class SignerLoader implements Closeable {
 
     LOG.info(
         "Total Artifact Signers loaded via configuration files: {}\nTotal Paths cached: {}, Error count: {}\nTime Taken: {}.",
-        result.keyCount(),
+        result.signers().size(),
         cachedArtifactSigners.size(),
         loadResult.errorCount(),
         calculateTimeTaken(loadStartTime).orElse("unknown duration"));
@@ -353,8 +346,7 @@ public class SignerLoader implements Closeable {
     }
 
     if (stoppedEarly) {
-      // files that were not processed are not deleted: report them as failed so that the signers
-      // previously loaded from them are kept
+      // unprocessed files are not deleted: report them as failed to keep their signers
       fileList.stream()
           .filter(pathStr -> !allLoadedSigners.containsKey(pathStr))
           .forEach(failedPaths::add);
@@ -413,8 +405,7 @@ public class SignerLoader implements Closeable {
         LOG.warn("Task execution failed: {}", filePath, e);
         failedPaths.add(filePath);
       } catch (final CancellationException e) {
-        // the file was not processed, it is not deleted: report it as failed so that the signers
-        // previously loaded from it are kept
+        // not processed, not deleted: report as failed to keep its signers
         LOG.warn("Task was canceled: {}", filePath);
         failedPaths.add(filePath);
       }
@@ -508,7 +499,7 @@ public class SignerLoader implements Closeable {
       final SignerParser signerParser,
       final AtomicLong configFilesHandled,
       final int totalFiles) {
-    // Interrupted (cancelled or shutting down) files are reported as failed, not as deleted
+    // interrupted files are reported as failed, not deleted
     final Set<String> interrupted = Set.of(pathStr);
     final Set<String> noFailures = Set.of();
 

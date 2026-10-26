@@ -232,7 +232,7 @@ public class Eth2Runner extends Runner {
           SignerSourceResult.fromVault("Azure key vault", loadAzureSigners(azureKeyVaultFactory));
       LOG.info(
           "Keys loaded from Azure: [{}], with error count: [{}]",
-          azureResult.keyCount(),
+          azureResult.signers().size(),
           azureResult.errorCount());
       registerSignerLoadingHealthCheck(KEYS_CHECK_AZURE_BULK_LOADING, azureResult);
       results.add(azureResult);
@@ -250,7 +250,7 @@ public class Eth2Runner extends Runner {
                   keystoresParameters.getKeystoresPasswordFile());
       LOG.info(
           "Keys loaded from local keystores: [{}], with error count: [{}]",
-          keystoreSignersResult.keyCount(),
+          keystoreSignersResult.signers().size(),
           keystoreSignersResult.errorCount());
 
       registerSignerLoadingHealthCheck(KEYS_CHECK_KEYSTORE_BULK_LOADING, keystoreSignersResult);
@@ -266,7 +266,7 @@ public class Eth2Runner extends Runner {
               "AWS Secrets Manager", blsAwsBulkLoader.load(awsVaultParameters));
       LOG.info(
           "Keys loaded from AWS Secrets Manager: [{}], with error count: [{}]",
-          awsResult.keyCount(),
+          awsResult.signers().size(),
           awsResult.errorCount());
       registerSignerLoadingHealthCheck(KEYS_CHECK_AWS_BULK_LOADING, awsResult);
       results.add(awsResult);
@@ -280,7 +280,7 @@ public class Eth2Runner extends Runner {
               "GCP Secret Manager", blsGcpBulkLoader.load(gcpSecretManagerParameters));
       LOG.info(
           "Keys loaded from GCP Secret Manager: [{}], with error count: [{}]",
-          gcpResult.keyCount(),
+          gcpResult.signers().size(),
           gcpResult.errorCount());
       registerSignerLoadingHealthCheck(KEYS_CHECK_GCP_BULK_LOADING, gcpResult);
       results.add(gcpResult);
@@ -291,8 +291,8 @@ public class Eth2Runner extends Runner {
 
   private void registerSignerLoadingHealthCheck(
       final String name, final SignerSourceResult result) {
-    // capture the counts only: the lambda lives until the next reload, the loaded signers need not
-    final long keysLoaded = result.keyCount();
+    // capture counts only, so the lambda does not retain the signers
+    final int keysLoaded = result.signers().size();
     final int errorCount = result.errorCount();
     super.registerHealthCheckProcedure(
         name,

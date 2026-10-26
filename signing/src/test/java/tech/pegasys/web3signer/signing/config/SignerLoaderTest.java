@@ -200,7 +200,6 @@ class SignerLoaderTest {
     final SignerSourceResult result = signerLoader.load(signerParser);
 
     // every file is reported, so that the provider keeps the key while any of them fails
-    assertThat(result.keyCount()).isOne();
     assertThat(result.signers())
         .extracting(loaded -> loaded.file().orElseThrow())
         .containsExactlyInAnyOrder(file1.toString(), file2.toString());

@@ -20,22 +20,17 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Outcome of loading signers from one configured source (key config directory, keystore directory
- * or vault), including which files failed and whether the source failed as a whole.
- *
- * <p>{@link DefaultArtifactSignerProvider} records the source and file of every loaded signer. On a
- * reload, a previously loaded signer that is missing from the results is kept only if one of its
- * sources failed as a whole or one of its files is listed in {@link #failedFiles()}; otherwise it
- * is treated as removed.
+ * Signers loaded from one source (key config directory, keystore directory or vault), with the
+ * files that failed and whether the source failed as a whole. {@link DefaultArtifactSignerProvider}
+ * uses them to tell a deleted key from one that failed to load.
  *
  * @param source name of the source, unique among the sources of one provider
- * @param signers signers loaded in this load, with the file each one was loaded from; a key defined
- *     by more than one file is listed once per file
+ * @param signers loaded signers with their file; a key defined by several files appears once per
+ *     file
  * @param failedFiles files that are present but failed to load
- * @param errorCount number of errors encountered while loading this source
- * @param sourceFailed {@code true} when failures cannot be attributed to files (directory not
- *     listable, shared password file unreadable, vault errors); every signer previously loaded from
- *     this source that is missing is then kept
+ * @param errorCount number of errors in this source
+ * @param sourceFailed failure not attributable to a file (unlistable directory, unreadable shared
+ *     password file, any vault error)
  */
 public record SignerSourceResult(
     String source,
@@ -44,12 +39,7 @@ public record SignerSourceResult(
     int errorCount,
     boolean sourceFailed) {
 
-  /**
-   * A loaded signer and the file it was loaded from.
-   *
-   * @param signer the signer
-   * @param file the file the signer was loaded from; empty for vault sources
-   */
+  /** A loaded signer and its file; the file is empty for vaults. */
   public record LoadedSigner(ArtifactSigner signer, Optional<String> file) {}
 
   public SignerSourceResult {
@@ -62,10 +52,7 @@ public record SignerSourceResult(
     return new SignerSourceResult(source, List.of(), Set.of(), 1, true);
   }
 
-  /**
-   * Result of a vault source. Vault loaders cannot attribute errors to secrets, so any error marks
-   * the source as failed.
-   */
+  /** Vault loaders cannot attribute errors to secrets, so any error fails the whole source. */
   public static SignerSourceResult fromVault(
       final String source, final MappedResults<ArtifactSigner> results) {
     return new SignerSourceResult(
@@ -80,10 +67,5 @@ public record SignerSourceResult(
 
   public List<ArtifactSigner> artifactSigners() {
     return signers.stream().map(LoadedSigner::signer).toList();
-  }
-
-  /** Number of distinct keys loaded; a key defined by more than one file counts once. */
-  public long keyCount() {
-    return signers.stream().map(loaded -> loaded.signer().getIdentifier()).distinct().count();
   }
 }

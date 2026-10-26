@@ -36,12 +36,7 @@ import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.crypto.exception.CipherException;
 
-/**
- * Bulk-loads SECP256K1 v3 keystores from a directory. The result names the keystore file of every
- * loaded signer and lists the keystore files that failed to load, so that {@link
- * tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider} can keep the signers of
- * failed files while dropping the signers of deleted files.
- */
+/** Bulk-loads SECP256K1 v3 keystores; reports each signer's file and the files that failed. */
 public class SecpV3KeystoresBulkLoader {
   private static final Logger LOG = LogManager.getLogger();
   private static final String SOURCE_NAME = "v3 keystores";
@@ -52,7 +47,7 @@ public class SecpV3KeystoresBulkLoader {
    * @param keystoresPath Path to the directory containing the v3 keystores
    * @param pwrdFileOrDirPath Path to the password file or directory containing the passwords for
    *     the v3 keystores
-   * @return the loaded ArtifactSigners with their keystore files and the failed keystore files
+   * @return the loaded signers with their files, and the failed files
    */
   public static SignerSourceResult loadV3KeystoresUsingPasswordFileOrDir(
       final Path keystoresPath, final Path pwrdFileOrDirPath) {
@@ -87,9 +82,8 @@ public class SecpV3KeystoresBulkLoader {
    * before signing.
    *
    * @param keystoresPath Path to the directory containing the v3 keystores
-   * @param password the password of every keystore in the directory, read once per load for all
-   *     proxy directories
-   * @return the loaded ArtifactSigners with their keystore files and the failed keystore files
+   * @param password the password of every keystore in the directory
+   * @return the loaded signers with their files, and the failed files
    */
   public static SignerSourceResult loadECDSAProxyKeystores(
       final Path keystoresPath, final String password) {
