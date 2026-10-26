@@ -215,6 +215,11 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
                   Provenance::merge);
             }
           }
+          if (errorCount > 0) {
+            newProvenance.replaceAll(
+                (identifier, places) ->
+                    withFailedPlaces(places, currentState.provenance.get(identifier), results));
+          }
 
           retainSignersOfFailedSources(
               currentState, results, errorCount, newSigners, newProvenance);
@@ -508,6 +513,14 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
 
       final long dirErrorCount =
           dirResults.stream().mapToLong(SignerSourceResult::errorCount).sum();
+      if (dirErrorCount > 0) {
+        for (final String identifier : proxies.keySet()) {
+          newProxyProvenance.computeIfPresent(
+              identifier,
+              (id, places) ->
+                  withFailedPlaces(places, currentState.proxyProvenance.get(id), dirResults));
+        }
+      }
       for (final ArtifactSigner previous :
           currentState.proxySigners.getOrDefault(consensusPubKey, Set.of())) {
         final String identifier = previous.getIdentifier();
@@ -654,6 +667,21 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       }
     }
     return false;
+  }
+
+  /**
+   * Adds a loaded key's previous places that failed in this load, so the key is not removed when
+   * the file it still loads from is deleted while they keep failing.
+   */
+  private static Provenance withFailedPlaces(
+      final Provenance places, final Provenance previous, final List<SignerSourceResult> results) {
+    Provenance merged = places;
+    for (Provenance place = previous; place != null; place = place.next()) {
+      if (!merged.lists(place) && failedToLoadFrom(place, results)) {
+        merged = new Provenance(place.source(), place.file(), merged);
+      }
+    }
+    return merged;
   }
 
   private static boolean failedToLoadFrom(
