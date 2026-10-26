@@ -1,0 +1,11 @@
+# Trivy ignores for the distroless images (*-distroless tags) in the nightly Docker image scan
+# (.github/workflows/trivy.yml). The default images use gradle/trivyignore.txt; entries valid for both must be
+# listed in each file. Same rules as that file.
+
+# util-linux nsenter/mount/libmount flaws, reported against libuuid1 (same source package). The distroless images
+# ship only libuuid.so.1, which nothing loads. No fix in Debian 13 (no-dsa, minor).
+# Not valid for the default Ubuntu images: they ship mount, nsenter and libmount from the same unfixed util-linux.
+CVE-2026-76642 exp:2027-01-31
+CVE-2026-78408 exp:2027-01-31
+CVE-2026-78409 exp:2027-01-31
+CVE-2026-78410 exp:2027-01-31

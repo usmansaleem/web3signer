@@ -53,13 +53,16 @@ ENV JAVA_HOME="/opt/java/openjdk" \
     WEB3SIGNER_HTTP_LISTEN_HOST="0.0.0.0" \
     WEB3SIGNER_METRICS_HOST="0.0.0.0"
 
-# Apply all security updates, install dependencies and create user
+# Apply all security updates, install dependencies and create user.
+# Also drop Pebble, the service manager the rock-built Ubuntu base ships outside dpkg. Web3Signer never runs
+# it, and its bundled Go stdlib carries CVE-2026-78667, CVE-2026-78669, CVE-2026-97031 and CVE-2026-111943.
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl && \
     rm -rf /var/lib/apt/lists/* && \
+    rm -rf /usr/bin/pebble /var/lib/pebble && \
     useradd --system --no-create-home --shell /bin/false web3signer
 
 # Copy full Eclipse Temurin JRE 25.0.5+8 (no module complexity, all features available)
