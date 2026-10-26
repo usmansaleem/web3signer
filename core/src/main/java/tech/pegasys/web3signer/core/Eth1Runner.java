@@ -196,7 +196,7 @@ public class Eth1Runner extends Runner {
             "Azure key vault", secpAzureBulkLoader.load(azureKeyVaultConfig));
     LOG.info(
         "Keys loaded from Azure: [{}], with error count: [{}]",
-        azureResult.signers().size(),
+        azureResult.keyCount(),
         azureResult.errorCount());
     registerSignerLoadingHealthCheck(KEYS_CHECK_AZURE_BULK_LOADING, azureResult);
     return azureResult;
@@ -213,7 +213,7 @@ public class Eth1Runner extends Runner {
             "AWS KMS", secpAwsBulkLoader.load(eth1Config.getAwsVaultParameters()));
     LOG.info(
         "Keys loaded from AWS: [{}], with error count: [{}]",
-        awsResult.signers().size(),
+        awsResult.keyCount(),
         awsResult.errorCount());
     registerSignerLoadingHealthCheck(KEYS_CHECK_AWS_BULK_LOADING, awsResult);
     return awsResult;
@@ -231,7 +231,7 @@ public class Eth1Runner extends Runner {
                 : v3WalletBLParams.getKeystoresPasswordsPath());
     LOG.info(
         "Keys loaded from v3 keystores files: [{}], with error count: [{}]",
-        walletResults.signers().size(),
+        walletResults.keyCount(),
         walletResults.errorCount());
     registerSignerLoadingHealthCheck(KEYS_CHECK_V3_KEYSTORES_BULK_LOADING, walletResults);
     return walletResults;
@@ -240,7 +240,7 @@ public class Eth1Runner extends Runner {
   private void registerSignerLoadingHealthCheck(
       final String name, final SignerSourceResult result) {
     // capture the counts only: the lambda lives until the next reload, the loaded signers need not
-    final int keysLoaded = result.signers().size();
+    final long keysLoaded = result.keyCount();
     final int errorCount = result.errorCount();
     super.registerHealthCheckProcedure(
         name,

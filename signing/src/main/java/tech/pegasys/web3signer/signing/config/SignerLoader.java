@@ -32,7 +32,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -175,30 +174,30 @@ public class SignerLoader implements Closeable {
     // Update the volatile reference with the new immutable map
     cachedArtifactSigners = Map.copyOf(newCache);
 
-    // a signer can be defined by more than one file: keep the first occurrence
-    final Map<String, LoadedSigner> uniqueSigners = new LinkedHashMap<>();
-    cachedArtifactSigners
-        .values()
-        .forEach(
-            cached ->
-                cached
-                    .signers()
-                    .forEach(
-                        signer ->
-                            uniqueSigners.putIfAbsent(
-                                signer.getIdentifier(),
-                                new LoadedSigner(signer, Optional.of(cached.filePath())))));
-    final List<LoadedSigner> loadedSigners = List.copyOf(uniqueSigners.values());
+    // a signer can be defined by more than one file: report every file it was loaded from, so that
+    // the provider keeps it while any of them fails to load
+    final SignerSourceResult result =
+        new SignerSourceResult(
+            SOURCE_NAME,
+            cachedArtifactSigners.values().stream()
+                .flatMap(
+                    cached ->
+                        cached.signers().stream()
+                            .map(
+                                signer -> new LoadedSigner(signer, Optional.of(cached.filePath()))))
+                .toList(),
+            loadResult.failedPaths(),
+            loadResult.errorCount(),
+            false);
 
     LOG.info(
         "Total Artifact Signers loaded via configuration files: {}\nTotal Paths cached: {}, Error count: {}\nTime Taken: {}.",
-        loadedSigners.size(),
+        result.keyCount(),
         cachedArtifactSigners.size(),
         loadResult.errorCount(),
         calculateTimeTaken(loadStartTime).orElse("unknown duration"));
 
-    return new SignerSourceResult(
-        SOURCE_NAME, loadedSigners, loadResult.failedPaths(), loadResult.errorCount(), false);
+    return result;
   }
 
   /**
@@ -414,8 +413,10 @@ public class SignerLoader implements Closeable {
         LOG.warn("Task execution failed: {}", filePath, e);
         failedPaths.add(filePath);
       } catch (final CancellationException e) {
-        // task was intentionally canceled - not an error
-        LOG.debug("Task was canceled: {}", filePath);
+        // the file was not processed, it is not deleted: report it as failed so that the signers
+        // previously loaded from it are kept
+        LOG.warn("Task was canceled: {}", filePath);
+        failedPaths.add(filePath);
       }
     }
     return new LoadResult(allLoadedSigners, failedPaths);

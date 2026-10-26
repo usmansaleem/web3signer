@@ -53,6 +53,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -189,16 +190,20 @@ class SignerLoaderTest {
   }
 
   @Test
-  void multipleMatchesForSameIdentifierReturnsSameSigners() throws IOException {
+  void keyDefinedByTwoFilesIsReportedWithBothFiles() throws IOException {
     final String filename1 = "1_" + configFileName(blsKeyPair1);
     final String filename2 = "2_" + configFileName(blsKeyPair1);
     final String privateKeyHex = blsKeyPair1.getSecretKey().toBytes().toHexString();
-    createFileInConfigsDirectory(filename1, privateKeyHex);
-    createFileInConfigsDirectory(filename2, privateKeyHex);
+    final Path file1 = createFileInConfigsDirectory(filename1, privateKeyHex);
+    final Path file2 = createFileInConfigsDirectory(filename2, privateKeyHex);
 
     final SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.artifactSigners()).hasSize(1);
+    // every file is reported, so that the provider keeps the key while any of them fails
+    assertThat(result.keyCount()).isOne();
+    assertThat(result.signers())
+        .extracting(loaded -> loaded.file().orElseThrow())
+        .containsExactlyInAnyOrder(file1.toString(), file2.toString());
     assertThat(result.errorCount()).isZero();
   }
 
@@ -835,6 +840,20 @@ class SignerLoaderTest {
 
     assertThat(result.loadedSigners()).isEmpty();
     assertThat(result.failedPaths()).containsExactly(file.toString());
+  }
+
+  @Test
+  void cancelledFileIsReportedAsFailed() throws Exception {
+    final String file = configsDirectory.resolve("1.yaml").toString();
+    final CompletableFuture<SignerLoader.LoadResult> cancelled = new CompletableFuture<>();
+    cancelled.cancel(true);
+
+    final SignerLoader.LoadResult result =
+        signerLoader.collectBatchResults(List.of(cancelled), List.of(file));
+
+    // the file was not processed, it was not deleted: its previously loaded signers must be kept
+    assertThat(result.loadedSigners()).isEmpty();
+    assertThat(result.failedPaths()).containsExactly(file);
   }
 
   @Test

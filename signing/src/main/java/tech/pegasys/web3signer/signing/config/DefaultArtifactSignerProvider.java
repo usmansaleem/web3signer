@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
@@ -93,15 +94,43 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       Map<String, Provenance> proxyProvenance) {}
 
   /**
-   * Where a signer was loaded from. Entries of signers removed through {@link #removeSigner} are
+   * Where a signer was loaded from. A key loaded from more than one file has one entry per file,
+   * chained through {@code next}, so that it is kept while any of them fails to load; the common
+   * single-file key costs one object. Entries of signers removed through {@link #removeSigner} are
    * left in place: retention only consults the provenance of signers that are still loaded, and
    * every {@link #load()} rebuilds the provenance maps from its results.
    *
    * @param source name of the loader source the signer came from; the proxy keystore directory for
    *     proxy signers
    * @param file file the signer was loaded from, {@code null} for vault sources
+   * @param next another place the same key was loaded from, {@code null} if none
    */
-  private record Provenance(String source, String file) {}
+  private record Provenance(String source, String file, Provenance next) {
+
+    private Provenance(final String source, final String file) {
+      this(source, file, null);
+    }
+
+    /** Adds the places of {@code other} that {@code first} does not list yet. */
+    private static Provenance merge(final Provenance first, final Provenance other) {
+      Provenance merged = first;
+      for (Provenance place = other; place != null; place = place.next) {
+        if (!first.lists(place)) {
+          merged = new Provenance(place.source, place.file, merged);
+        }
+      }
+      return merged;
+    }
+
+    private boolean lists(final Provenance other) {
+      for (Provenance place = this; place != null; place = place.next) {
+        if (place.source.equals(other.source) && Objects.equals(place.file, other.file)) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
 
   private final ExecutorService executorService =
       Executors.newSingleThreadExecutor(
@@ -185,10 +214,11 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
               final String identifier = loaded.signer().getIdentifier();
               if (newSigners.putIfAbsent(identifier, loaded.signer()) != null) {
                 LOG.warn("Duplicate key found while loading: {}", identifier);
-                continue;
               }
-              newProvenance.put(
-                  identifier, new Provenance(result.source(), loaded.file().orElse(null)));
+              newProvenance.merge(
+                  identifier,
+                  new Provenance(result.source(), loaded.file().orElse(null)),
+                  Provenance::merge);
             }
           }
 
@@ -480,8 +510,10 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
         for (final SignerSourceResult.LoadedSigner loaded : result.signers()) {
           final String identifier = loaded.signer().getIdentifier();
           proxies.putIfAbsent(identifier, loaded.signer());
-          newProxyProvenance.putIfAbsent(
-              identifier, new Provenance(result.source(), loaded.file().orElse(null)));
+          newProxyProvenance.merge(
+              identifier,
+              new Provenance(result.source(), loaded.file().orElse(null)),
+              Provenance::merge);
         }
       }
 
@@ -540,7 +572,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final Map<String, Provenance> newProxyProvenance) {
     final Provenance provenance = currentState.proxyProvenance.get(identifier);
     if (provenance != null) {
-      newProxyProvenance.put(identifier, provenance);
+      // the same proxy key may have been loaded for another consensus key in this load
+      newProxyProvenance.merge(identifier, provenance, Provenance::merge);
     }
   }
 
@@ -555,9 +588,11 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   }
 
   /**
-   * Loads the proxy keystores of one consensus key and key type. Returns empty when the directory
-   * does not exist (no proxy keys). The result is named after the directory so that the provenance
-   * of each proxy signer identifies it; an unreadable password file fails the directory as a whole.
+   * Loads the proxy keystores of one consensus key and key type. Returns empty only when the
+   * directory is known not to exist (no proxy keys); a directory whose existence cannot be
+   * determined (e.g. an inaccessible parent) is handed to the loader, which fails it as a whole.
+   * The result is named after the directory so that the provenance of each proxy signer identifies
+   * it; an unreadable password file fails the directory as a whole.
    */
   private static Optional<SignerSourceResult> loadProxyDir(
       final Path keystoresPath,
@@ -566,7 +601,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final Supplier<Optional<String>> password,
       final BiFunction<Path, String, SignerSourceResult> loaderFunction) {
     final Path proxyDir = keystoresPath.resolve(consensusPubKey).resolve(keyType.name());
-    if (!Files.exists(proxyDir)) {
+    // Files.exists is also false when existence cannot be determined, which would look deleted
+    if (Files.notExists(proxyDir)) {
       return Optional.empty();
     }
     final String source = proxyDir.toString();
@@ -620,7 +656,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   }
 
   /**
-   * A missing signer is kept when the load failed for its source as a whole or for the file it was
+   * A missing signer is kept when the load failed for its source as a whole or for any file it was
    * loaded from. A signer added at runtime (key manager API) has no provenance: nothing in the load
    * results can confirm its removal, so it is kept while any source reports errors.
    */
@@ -629,12 +665,21 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
     if (provenance == null) {
       return errorCount > 0;
     }
+    for (Provenance place = provenance; place != null; place = place.next()) {
+      if (failedToLoadFrom(place, results)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean failedToLoadFrom(
+      final Provenance place, final List<SignerSourceResult> results) {
     return results.stream()
-        .filter(result -> result.source().equals(provenance.source()))
+        .filter(result -> result.source().equals(place.source()))
         .anyMatch(
             result ->
                 result.sourceFailed()
-                    || (provenance.file() != null
-                        && result.failedFiles().contains(provenance.file())));
+                    || (place.file() != null && result.failedFiles().contains(place.file())));
   }
 }

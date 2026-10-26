@@ -24,12 +24,13 @@ import java.util.Set;
  * or vault), including which files failed and whether the source failed as a whole.
  *
  * <p>{@link DefaultArtifactSignerProvider} records the source and file of every loaded signer. On a
- * reload, a previously loaded signer that is missing from the results is kept only if its source
- * failed as a whole or its own file is listed in {@link #failedFiles()}; otherwise it is treated as
- * removed.
+ * reload, a previously loaded signer that is missing from the results is kept only if one of its
+ * sources failed as a whole or one of its files is listed in {@link #failedFiles()}; otherwise it
+ * is treated as removed.
  *
  * @param source name of the source, unique among the sources of one provider
- * @param signers signers loaded in this load, with the file each one was loaded from
+ * @param signers signers loaded in this load, with the file each one was loaded from; a key defined
+ *     by more than one file is listed once per file
  * @param failedFiles files that are present but failed to load
  * @param errorCount number of errors encountered while loading this source
  * @param sourceFailed {@code true} when failures cannot be attributed to files (directory not
@@ -79,5 +80,10 @@ public record SignerSourceResult(
 
   public List<ArtifactSigner> artifactSigners() {
     return signers.stream().map(LoadedSigner::signer).toList();
+  }
+
+  /** Number of distinct keys loaded; a key defined by more than one file counts once. */
+  public long keyCount() {
+    return signers.stream().map(loaded -> loaded.signer().getIdentifier()).distinct().count();
   }
 }

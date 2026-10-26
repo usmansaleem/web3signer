@@ -15,6 +15,7 @@ package tech.pegasys.web3signer.signing.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +31,7 @@ import tech.pegasys.web3signer.signing.secp256k1.EthPublicKeyUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.KeyPair;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -45,6 +47,8 @@ import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.WalletUtils;
@@ -400,6 +404,44 @@ class DefaultArtifactSignerProviderTest {
   }
 
   @Test
+  void signerLoadedFromSeveralFilesIsRetainedWhileAnyOfThemFails() throws Exception {
+    final String keyConfigFile = "/configs/1.yaml";
+    final String keystoreFile = "/keystores/1.json";
+
+    final List<Set<String>> removedCaptures = new ArrayList<>();
+    final BiConsumer<Set<String>, Set<String>> callback =
+        (added, removed) -> removedCaptures.add(Set.copyOf(removed));
+
+    // the same key is defined by a key config file and by a keystore
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(
+                fileResult("key config files", Map.of(keyConfigFile, mockSigner(PUBLIC_KEY1))),
+                fileResult("bls keystores", Map.of(keystoreFile, mockSigner(PUBLIC_KEY1)))));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.of(callback), Optional.empty());
+    signerProvider.load().get();
+
+    // the key config file is deleted while the keystore fails: the key is kept
+    resultsRef.set(
+        List.of(
+            fileResult("key config files", Map.of()),
+            fileResult("bls keystores", Map.of(), Set.of(keystoreFile))));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
+    assertThat(removedCaptures.get(1)).isEmpty();
+
+    // both files are gone: the key is removed
+    resultsRef.set(
+        List.of(fileResult("key config files", Map.of()), fileResult("bls keystores", Map.of())));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.availableIdentifiers()).isEmpty();
+    assertThat(removedCaptures.get(2)).containsExactly(PUBLIC_KEY1);
+  }
+
+  @Test
   void vaultKeysAreRetainedOnVaultErrorAndRemovedOnErrorFreeLoad() throws Exception {
     final ArtifactSigner vaultSigner = mockSigner(PUBLIC_KEY1);
 
@@ -561,6 +603,35 @@ class DefaultArtifactSignerProviderTest {
     assertThat(proxies.get(KeyType.BLS)).containsExactlyInAnyOrder(getPublicKeysArray(blsProxies));
     assertThat(proxies.get(KeyType.SECP256K1))
         .containsExactlyInAnyOrder(getCompressedSECPPublicKeysArray(secpProxies));
+  }
+
+  @Test
+  @DisabledOnOs(OS.WINDOWS)
+  void proxySignersAreRetainedWhenProxyDirectoryCannotBeAccessed() throws Exception {
+    final KeystoresParameters commitBoostParameters =
+        new TestCommitBoostParameters(commitBoostKeystoresPath, commitBoostPasswordDir);
+    final List<BLSKeyPair> blsProxies = randomBLSV4Keystores(PUBLIC_KEY1);
+    final Path consensusKeyDir = commitBoostKeystoresPath.resolve(PUBLIC_KEY1);
+
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            () -> List.of(sourceResult("key config files", mockSigner(PUBLIC_KEY1))),
+            Optional.empty(),
+            Optional.of(commitBoostParameters));
+    signerProvider.load().get();
+
+    final Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(consensusKeyDir);
+    Files.setPosixFilePermissions(consensusKeyDir, Set.of());
+    try {
+      // the existence of the proxy directory cannot be determined (not the case for root)
+      assumeFalse(Files.exists(consensusKeyDir.resolve(KeyType.BLS.name())));
+      signerProvider.load().get();
+    } finally {
+      Files.setPosixFilePermissions(consensusKeyDir, permissions);
+    }
+
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1).get(KeyType.BLS))
+        .containsExactlyInAnyOrder(getPublicKeysArray(blsProxies));
   }
 
   @Test
