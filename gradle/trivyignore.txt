@@ -1,3 +1,10 @@
 # Trivy ignores for the nightly Docker image scan (.github/workflows/trivy.yml).
 # One CVE id per line. Every entry must explain why the CVE does not apply to the images we ship.
 # Trivy does not report entries that match nothing, so re-check this file when the base images are bumped.
+
+# util-linux nsenter/mount/libmount flaws, reported against libuuid1 (same source package). The distroless images
+# ship only libuuid.so.1, which nothing loads. No fix in Debian 13 (no-dsa, minor).
+CVE-2026-76642 exp:2027-01-31
+CVE-2026-78408 exp:2027-01-31
+CVE-2026-78409 exp:2027-01-31
+CVE-2026-78410 exp:2027-01-31
