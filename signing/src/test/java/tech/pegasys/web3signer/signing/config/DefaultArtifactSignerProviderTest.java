@@ -45,6 +45,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.stream.IntStream;
 
+import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -477,6 +478,83 @@ class DefaultArtifactSignerProviderTest {
   }
 
   @Test
+  void retainedKeyKeepsOnlyItsFailedFiles() throws Exception {
+    final String keyConfigFile = "/configs/1.yaml";
+    final String keystoreFile = "/keystores/1.json";
+
+    final List<Set<String>> removedCaptures = new ArrayList<>();
+    final BiConsumer<Set<String>, Set<String>> callback =
+        (added, removed) -> removedCaptures.add(Set.copyOf(removed));
+
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(
+                fileResult("key config files", Map.of(keyConfigFile, mockSigner(PUBLIC_KEY1))),
+                fileResult("bls keystores", Map.of(keystoreFile, mockSigner(PUBLIC_KEY1)))));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.of(callback), Optional.empty());
+    signerProvider.load().get();
+
+    // the keystore is deleted while the key config file fails: the key is kept
+    resultsRef.set(
+        List.of(
+            fileResult("key config files", Map.of(), Set.of(keyConfigFile)),
+            fileResult("bls keystores", Map.of())));
+    signerProvider.load().get();
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
+
+    // the key config file is deleted while the keystore source fails: the deleted keystore no
+    // longer keeps the key
+    resultsRef.set(
+        List.of(
+            fileResult("key config files", Map.of()),
+            SignerSourceResult.sourceFailure("bls keystores")));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.availableIdentifiers()).isEmpty();
+    assertThat(removedCaptures.get(2)).containsExactly(PUBLIC_KEY1);
+  }
+
+  @Test
+  void removedSignerLoadedAgainFromAnotherFileIsNotKeptByItsOldFile() throws Exception {
+    final String keyConfigFile = "/configs/1.yaml";
+    final String keystoreFile = "/keystores/1.json";
+
+    final List<Set<String>> removedCaptures = new ArrayList<>();
+    final BiConsumer<Set<String>, Set<String>> callback =
+        (added, removed) -> removedCaptures.add(Set.copyOf(removed));
+
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(
+                fileResult("key config files", Map.of(keyConfigFile, mockSigner(PUBLIC_KEY1))),
+                fileResult("bls keystores", Map.of())));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.of(callback), Optional.empty());
+    signerProvider.load().get();
+
+    // key manager API delete, then the key reappears as a keystore while key configs fail
+    signerProvider.removeSigner(PUBLIC_KEY1).get();
+    resultsRef.set(
+        List.of(
+            SignerSourceResult.sourceFailure("key config files"),
+            fileResult("bls keystores", Map.of(keystoreFile, mockSigner(PUBLIC_KEY1)))));
+    signerProvider.load().get();
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
+
+    // the keystore is deleted while key configs still fail: the old key config file does not
+    // keep the key
+    resultsRef.set(
+        List.of(
+            SignerSourceResult.sourceFailure("key config files"),
+            fileResult("bls keystores", Map.of())));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.availableIdentifiers()).isEmpty();
+    assertThat(removedCaptures.get(2)).containsExactly(PUBLIC_KEY1);
+  }
+
+  @Test
   void vaultKeysAreRetainedOnVaultErrorAndRemovedOnErrorFreeLoad() throws Exception {
     final ArtifactSigner vaultSigner = mockSigner(PUBLIC_KEY1);
 
@@ -723,6 +801,30 @@ class DefaultArtifactSignerProviderTest {
     signerProvider.load().get();
 
     assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1).get(KeyType.BLS)).contains(proxy);
+  }
+
+  @Test
+  void proxySignersAreRemovedWhenProxyKeystoresPathIsDeleted() throws Exception {
+    final KeystoresParameters commitBoostParameters =
+        new TestCommitBoostParameters(commitBoostKeystoresPath, commitBoostPasswordDir);
+    randomBLSV4Keystores(PUBLIC_KEY1);
+
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            () -> List.of(sourceResult("key config files", mockSigner(PUBLIC_KEY1))),
+            Optional.empty(),
+            Optional.of(commitBoostParameters));
+    signerProvider.load().get();
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1)).isNotEmpty();
+
+    FileUtils.deleteDirectory(commitBoostKeystoresPath.toFile());
+    try {
+      signerProvider.load().get();
+    } finally {
+      Files.createDirectories(commitBoostKeystoresPath);
+    }
+
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1)).isEmpty();
   }
 
   private static ArtifactSigner mockSigner(final String identifier) {

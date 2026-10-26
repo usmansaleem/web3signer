@@ -215,11 +215,6 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
                   Provenance::merge);
             }
           }
-          if (errorCount > 0) {
-            newProvenance.replaceAll(
-                (identifier, places) ->
-                    withFailedPlaces(places, currentState.provenance.get(identifier), results));
-          }
 
           retainSignersOfFailedSources(
               currentState, results, errorCount, newSigners, newProvenance);
@@ -454,8 +449,9 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    * </pre>
    *
    * <p>A missing proxy signer is kept if its directory (unreadable directory or password file) or
-   * its file failed to load; a missing or empty directory has no proxy signers. If the keystores
-   * path cannot be read, all proxy signers are kept. The password file is read at most once.
+   * its file failed to load; a missing or empty directory has no proxy signers. A missing keystores
+   * path has no proxy signers; one that cannot be read keeps them all. The password file is read at
+   * most once.
    */
   private static void loadProxySigners(
       final KeystoresParameters keystoreParameter,
@@ -464,10 +460,15 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final Map<String, Set<ArtifactSigner>> newProxySigners,
       final Map<String, Provenance> newProxyProvenance) {
     final Path keystoresPath = keystoreParameter.getKeystoresPath();
+    final boolean hadProxies =
+        currentState.proxySigners.values().stream().anyMatch(proxies -> !proxies.isEmpty());
+    if (Files.notExists(keystoresPath)) {
+      if (hadProxies) {
+        LOG.warn("Proxy keystores path {} does not exist; removing proxy keys", keystoresPath);
+      }
+      return;
+    }
     if (!Files.isDirectory(keystoresPath) || !Files.isReadable(keystoresPath)) {
-      // no path yet is normal; losing one that held proxy keys is a failure
-      final boolean hadProxies =
-          currentState.proxySigners.values().stream().anyMatch(proxies -> !proxies.isEmpty());
       if (hadProxies) {
         LOG.error(
             "Unable to read proxy keystores path {}; keeping previously loaded proxy keys",
@@ -513,26 +514,26 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
 
       final long dirErrorCount =
           dirResults.stream().mapToLong(SignerSourceResult::errorCount).sum();
-      if (dirErrorCount > 0) {
-        for (final String identifier : proxies.keySet()) {
-          newProxyProvenance.computeIfPresent(
-              identifier,
-              (id, places) ->
-                  withFailedPlaces(places, currentState.proxyProvenance.get(id), dirResults));
-        }
-      }
       for (final ArtifactSigner previous :
           currentState.proxySigners.getOrDefault(consensusPubKey, Set.of())) {
         final String identifier = previous.getIdentifier();
+        final Provenance provenance = currentState.proxyProvenance.get(identifier);
         if (proxies.containsKey(identifier)) {
+          if (dirErrorCount > 0) {
+            newProxyProvenance.computeIfPresent(
+                identifier, (id, places) -> withFailedPlaces(places, provenance, dirResults));
+          }
           continue;
         }
-        final Provenance provenance = currentState.proxyProvenance.get(identifier);
-        if (failedToLoad(provenance, dirResults, dirErrorCount)) {
-          proxies.put(identifier, previous);
-          copyProvenance(currentState, identifier, newProxyProvenance);
-          retainedCount++;
+        final Provenance failed = failedPlaces(provenance, dirResults);
+        if (provenance == null ? dirErrorCount == 0 : failed == null) {
+          continue;
         }
+        proxies.put(identifier, previous);
+        if (failed != null) {
+          newProxyProvenance.merge(identifier, failed, Provenance::merge);
+        }
+        retainedCount++;
       }
 
       if (!proxies.isEmpty()) {
@@ -621,6 +622,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   /**
    * Keeps previously loaded signers that are missing because their source or file failed to load,
    * so a failure is not reported as a removal (and does not disable them in slashing protection).
+   * Only the failed places are kept. A signer that still loads keeps its previous failed places.
    */
   private static void retainSignersOfFailedSources(
       final SignerState currentState,
@@ -631,16 +633,22 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
     int retainedCount = 0;
     for (final Map.Entry<String, ArtifactSigner> previous : currentState.signers.entrySet()) {
       final String identifier = previous.getKey();
+      final Provenance provenance = currentState.provenance.get(identifier);
       if (newSigners.containsKey(identifier)) {
+        if (errorCount > 0) {
+          newProvenance.computeIfPresent(
+              identifier, (id, places) -> withFailedPlaces(places, provenance, results));
+        }
         continue;
       }
-      final Provenance provenance = currentState.provenance.get(identifier);
-      if (!failedToLoad(provenance, results, errorCount)) {
+      // a runtime-added signer has no provenance: keep it while any source reports errors
+      final Provenance failed = failedPlaces(provenance, results);
+      if (provenance == null ? errorCount == 0 : failed == null) {
         continue;
       }
       newSigners.put(identifier, previous.getValue());
-      if (provenance != null) {
-        newProvenance.put(identifier, provenance);
+      if (failed != null) {
+        newProvenance.put(identifier, failed);
       }
       retainedCount++;
     }
@@ -652,36 +660,29 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
     }
   }
 
-  /**
-   * Whether a missing signer's source or any of its files failed. A runtime-added signer has no
-   * provenance, so it is kept while any source reports errors.
-   */
-  private static boolean failedToLoad(
-      final Provenance provenance, final List<SignerSourceResult> results, final long errorCount) {
-    if (provenance == null) {
-      return errorCount > 0;
+  /** The places that failed in this load, or {@code null} if none did. */
+  private static Provenance failedPlaces(
+      final Provenance places, final List<SignerSourceResult> results) {
+    if (places == null) {
+      return null;
     }
-    for (Provenance place = provenance; place != null; place = place.next()) {
+    if (places.next() == null) {
+      return failedToLoadFrom(places, results) ? places : null;
+    }
+    Provenance failed = null;
+    for (Provenance place = places; place != null; place = place.next()) {
       if (failedToLoadFrom(place, results)) {
-        return true;
+        failed = new Provenance(place.source(), place.file(), failed);
       }
     }
-    return false;
+    return failed;
   }
 
-  /**
-   * Adds a loaded key's previous places that failed in this load, so the key is not removed when
-   * the file it still loads from is deleted while they keep failing.
-   */
+  /** Adds a loaded key's previous places that failed in this load. */
   private static Provenance withFailedPlaces(
       final Provenance places, final Provenance previous, final List<SignerSourceResult> results) {
-    Provenance merged = places;
-    for (Provenance place = previous; place != null; place = place.next()) {
-      if (!merged.lists(place) && failedToLoadFrom(place, results)) {
-        merged = new Provenance(place.source(), place.file(), merged);
-      }
-    }
-    return merged;
+    final Provenance failed = failedPlaces(previous, results);
+    return failed == null ? places : Provenance.merge(places, failed);
   }
 
   private static boolean failedToLoadFrom(
