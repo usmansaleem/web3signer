@@ -25,7 +25,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tag: [develop, develop-distroless, latest, latest-distroless]
+        # Each variant has its own ignore file: the distroless ignores must not apply to the default Ubuntu images.
+        include:
+          - tag: develop
+            ignorefile: gradle/trivyignore.txt
+          - tag: develop-distroless
+            ignorefile: gradle/trivyignore-distroless.txt
+          - tag: latest
+            ignorefile: gradle/trivyignore.txt
+          - tag: latest-distroless
+            ignorefile: gradle/trivyignore-distroless.txt
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -44,7 +53,7 @@ jobs:
             --scanners vuln
             --pkg-types os,library
             --severity HIGH,CRITICAL
-            --ignorefile gradle/trivyignore.txt
+            --ignorefile ${{ matrix.ignorefile }}
             --no-progress
             --timeout 15m
             --exit-code 1
