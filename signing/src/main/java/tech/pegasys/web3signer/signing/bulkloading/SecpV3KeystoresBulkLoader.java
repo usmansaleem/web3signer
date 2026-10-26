@@ -69,7 +69,7 @@ public class SecpV3KeystoresBulkLoader {
       }
     } else {
       LOG.error(
-          "Unexpected path. Expecting it to be a regular file or directory. {}", pwrdFileOrDirPath);
+          "Password path is neither a regular file nor a directory; check the keystores password file or directory in the configuration.");
       return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
