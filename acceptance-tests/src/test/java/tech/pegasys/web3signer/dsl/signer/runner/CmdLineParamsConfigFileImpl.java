@@ -316,6 +316,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
     return slashingProtectionDbUrl;
   }
 
+  @SuppressWarnings("removal") // deprecated known clients file and CA clients
   private Map<String, Object> createServerTlsArgs() {
     var yamlConfigMap = new HashMap<String, Object>();
 
@@ -353,6 +354,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
     return yamlConfigMap;
   }
 
+  @SuppressWarnings("removal") // deprecated known servers file and CA auth
   private Map<String, Object> createDownstreamTlsArgs() {
     final Optional<ClientTlsOptions> optionalClientTlsOptions =
         signerConfig.getDownstreamTlsOptions();

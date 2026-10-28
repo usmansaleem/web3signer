@@ -77,6 +77,7 @@ public class PicoCliClientTlsOptions implements ClientTlsOptions {
     return Optional.of(keyStoreOptions);
   }
 
+  @SuppressWarnings("removal") // overrides the deprecated interface method
   @Deprecated(forRemoval = true)
   @Override
   public boolean isCaAuthEnabled() {
@@ -88,6 +89,7 @@ public class PicoCliClientTlsOptions implements ClientTlsOptions {
     return caAuthEnabled != null;
   }
 
+  @SuppressWarnings("removal") // overrides the deprecated interface method
   @Deprecated(forRemoval = true)
   @Override
   public Optional<Path> getKnownServersFile() {

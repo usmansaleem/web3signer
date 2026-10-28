@@ -58,6 +58,7 @@ public class WebClientOptionsFactory {
     return Optional.of(proxyOptions);
   }
 
+  @SuppressWarnings("removal") // deprecated known servers file and CA auth
   private void applyTlsOptions(final WebClientOptions webClientOptions, final Eth1Config config) {
     final Optional<ClientTlsOptions> optionalClientTlsOptions = config.getClientTlsOptions();
     if (optionalClientTlsOptions.isEmpty()) {

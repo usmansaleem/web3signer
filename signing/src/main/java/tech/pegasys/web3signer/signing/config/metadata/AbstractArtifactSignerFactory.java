@@ -119,6 +119,7 @@ public abstract class AbstractArtifactSignerFactory implements ArtifactSignerFac
     }
   }
 
+  @SuppressWarnings("removal") // deprecated tlsKnownServersPath
   private Optional<TlsOptions> buildTlsOptions(final HashicorpSigningMetadata metadata) {
     if (!metadata.getTlsEnabled()) {
       return Optional.empty();

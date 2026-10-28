@@ -192,6 +192,7 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
     return slashingProtectionDbUrl;
   }
 
+  @SuppressWarnings("removal") // deprecated known clients file and CA clients
   private Collection<? extends String> createServerTlsArgs() {
     final List<String> params = Lists.newArrayList();
 
@@ -231,6 +232,7 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
     return params;
   }
 
+  @SuppressWarnings("removal") // deprecated known servers file and CA auth
   private Collection<String> createDownstreamTlsArgs() {
     final Optional<ClientTlsOptions> optionalClientTlsOptions =
         signerConfig.getDownstreamTlsOptions();

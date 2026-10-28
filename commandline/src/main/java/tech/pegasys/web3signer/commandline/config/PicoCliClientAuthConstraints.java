@@ -58,6 +58,7 @@ public class PicoCliClientAuthConstraints implements ClientAuthConstraints {
       arity = "1")
   private Boolean tlsAllowCaClients = false;
 
+  @SuppressWarnings("removal") // overrides the deprecated interface method
   @Deprecated(forRemoval = true)
   @Override
   public Optional<File> getKnownClientsFile() {
@@ -77,6 +78,7 @@ public class PicoCliClientAuthConstraints implements ClientAuthConstraints {
     return tlsTrustStorePasswordFile;
   }
 
+  @SuppressWarnings("removal") // overrides the deprecated interface method
   @Deprecated(forRemoval = true)
   @Override
   public boolean isCaAuthorizedClientAllowed() {

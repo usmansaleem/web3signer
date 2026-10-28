@@ -179,6 +179,7 @@ public class Eth1SubCommand extends ModeSubCommand implements Eth1Config {
     validateDownstreamTlsTrustOptions();
   }
 
+  @SuppressWarnings("removal") // validates the deprecated known servers file and CA auth
   private void validateDownstreamTlsTrustOptions() {
     final boolean trustStoreSpecified = clientTlsOptions.getTrustStoreOptions().isPresent();
     if (!trustStoreSpecified && clientTlsOptions.getTrustStorePasswordFile() != null) {

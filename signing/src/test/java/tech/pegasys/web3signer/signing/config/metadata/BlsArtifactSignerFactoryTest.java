@@ -188,6 +188,7 @@ class BlsArtifactSignerFactoryTest {
   }
 
   @Test
+  @SuppressWarnings("removal") // deprecated tlsKnownServersPath
   void malformedKnownServersFileShowsSuitableError() throws IOException {
 
     final Path malformedknownServers = configDir.resolve("malformedKnownServers");
@@ -285,6 +286,7 @@ class BlsArtifactSignerFactoryTest {
   }
 
   @Test
+  @SuppressWarnings("removal") // deprecated tlsKnownServersPath
   void truststoreWithKnownServersFileShowsSuitableError() {
     final HashicorpSigningMetadata metaData = tlsMetadata(configDir.resolve("truststore.p12"));
     metaData.setTlsTruststorePasswordFile(configDir.resolve("truststore.pass"));

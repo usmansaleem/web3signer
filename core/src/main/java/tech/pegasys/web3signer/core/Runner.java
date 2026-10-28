@@ -354,6 +354,7 @@ public abstract class Runner implements Runnable, AutoCloseable {
     }
   }
 
+  @SuppressWarnings("removal") // deprecated known clients file and CA clients
   private static HttpServerOptions applyClientAuthentication(
       final HttpServerOptions input, final ClientAuthConstraints constraints) {
     final HttpServerOptions result = new HttpServerOptions(input);

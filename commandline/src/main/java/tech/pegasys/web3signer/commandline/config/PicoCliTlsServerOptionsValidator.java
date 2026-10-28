@@ -34,6 +34,7 @@ public class PicoCliTlsServerOptionsValidator {
     this.picoCliTlsServerOptions = picoCliTlsServerOptions;
   }
 
+  @SuppressWarnings("removal") // validates the deprecated known clients file and CA clients
   public void validate() throws CommandLine.ParameterException {
     final File keyStoreFile = picoCliTlsServerOptions.getKeyStoreFile();
     final File keyStorePasswordFile = picoCliTlsServerOptions.getKeyStorePasswordFile();
