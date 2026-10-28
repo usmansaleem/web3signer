@@ -52,8 +52,8 @@ public class PicoCliClientAuthConstraints implements ClientAuthConstraints {
   @Option(
       names = "--tls-allow-ca-clients",
       description =
-          "If set to true, allows clients signed by the JVM's default CAs. Cannot be used with "
-              + "--tls-truststore-file. (Default: false)",
+          "Deprecated, use --tls-truststore-file. If set to true, allows clients signed by the "
+              + "JVM's default CAs. (Default: false)",
       paramLabel = BOOL_FORMAT_HELP,
       arity = "1")
   private Boolean tlsAllowCaClients = false;

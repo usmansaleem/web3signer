@@ -3,12 +3,17 @@
 ## Unreleased
 ### Security
 
+### Upcoming Breaking Changes
+The following options are deprecated, log a warning when used, and will be removed in a future release. A truststore can hold CA certificates as well as client or server certificates. [#1282][PR_1282]
+- `--tls-known-clients-file` and `--tls-allow-ca-clients`: use `--tls-truststore-file` and `--tls-truststore-password-file`.
+- `--downstream-http-tls-known-servers-file` and `--downstream-http-tls-ca-auth-enabled`: use `--downstream-http-tls-truststore-file` and `--downstream-http-tls-truststore-password-file`.
+- Hashicorp signing metadata `tlsKnownServersPath`: use `tlsTruststoreFile` and `tlsTruststorePasswordFile`.
+
 ### Features Added
 - TLS trust can be configured with a truststore instead of certificate fingerprint files: PKCS#12 (preferred), JKS or PEM certificates, detected from the file content. A password file is required for PKCS#12 and JKS, and not used for PEM. The truststore holds the trusted certificates or their issuing CAs and, like `javax.net.ssl.trustStore`, replaces the JVM's default CAs [#1282][PR_1282]:
   - Inbound client authentication: `--tls-truststore-file` and `--tls-truststore-password-file` (cannot be combined with `--tls-allow-ca-clients`).
   - Eth1 downstream web3 provider: `--downstream-http-tls-truststore-file` and `--downstream-http-tls-truststore-password-file`.
   - Hashicorp Vault signing metadata: `tlsTruststoreFile` and `tlsTruststorePasswordFile`; relative paths resolve against the key config directory.
-- Deprecated for removal in a future release, with a warning logged when used: the fingerprint files `--tls-known-clients-file`, `--downstream-http-tls-known-servers-file` and Hashicorp metadata `tlsKnownServersPath`, plus `--downstream-http-tls-ca-auth-enabled` (only meaningful with a known-servers file). Use the truststore options above instead. [#1282][PR_1282]
 
 ### Bugs Fixed
 

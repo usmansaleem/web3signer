@@ -29,5 +29,9 @@ public interface ClientAuthConstraints {
    */
   Optional<TrustStoreOptions> getTrustStoreOptions();
 
+  /**
+   * Whether clients signed by the JVM's default CAs are authorized. Deprecated for removal in
+   * favour of {@link #getTrustStoreOptions()}.
+   */
   boolean isCaAuthorizedClientAllowed();
 }

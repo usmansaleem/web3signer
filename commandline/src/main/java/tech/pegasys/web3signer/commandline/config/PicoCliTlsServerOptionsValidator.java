@@ -95,6 +95,11 @@ public class PicoCliTlsServerOptionsValidator {
           "--tls-known-clients-file is deprecated and will be removed in a future release. "
               + "Use --tls-truststore-file and --tls-truststore-password-file instead.");
     }
+    if (caClientsAllowed) {
+      LOG.warn(
+          "--tls-allow-ca-clients is deprecated and will be removed in a future release. "
+              + "Add the client CA certificates to --tls-truststore-file instead.");
+    }
   }
 
   private static boolean onlyOneInitialized(final Object o1, final Object o2) {
