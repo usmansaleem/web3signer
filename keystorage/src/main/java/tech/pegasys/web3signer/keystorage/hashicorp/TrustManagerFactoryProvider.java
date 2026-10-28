@@ -15,11 +15,8 @@ package tech.pegasys.web3signer.keystorage.hashicorp;
 import tech.pegasys.web3signer.keystorage.common.TrustStoreLoader;
 import tech.pegasys.web3signer.keystorage.hashicorp.config.TlsOptions;
 
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.security.GeneralSecurityException;
-import java.security.KeyStore;
 import java.util.Optional;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -40,37 +37,17 @@ public class TrustManagerFactoryProvider {
                         "Cannot create TrustManagerFactory from empty truststore type."));
     trustManagerFactory =
         switch (trustStoreType) {
-          case JKS, PKCS12 ->
-              buildFromKeystore(
-                  tlsOptions.getTrustStorePath(),
-                  tlsOptions.getTrustStorePassword(),
-                  trustStoreType);
-          case PEM ->
+          // the format (PEM, PKCS#12 or JKS) is detected from the file content
+          case JKS, PKCS12, PEM ->
               TrustStoreLoader.createTrustManagerFactory(
-                  tlsOptions.getTrustStorePath(), Optional.empty());
+                  tlsOptions.getTrustStorePath(),
+                  Optional.ofNullable(tlsOptions.getTrustStorePassword()));
           default ->
               // Tuweni throws an NPE if the trustStorePath has no directory prefix, thus requiring
               // the use of absolutePath.
               TrustManagerFactories.allowlistServers(
                   tlsOptions.getTrustStorePath().toAbsolutePath(), true);
         };
-    return trustManagerFactory;
-  }
-
-  private static TrustManagerFactory buildFromKeystore(
-      final Path keystorePath, final String keystorePassword, final TrustStoreType keystoreType)
-      throws GeneralSecurityException, IOException {
-    // Load the keystore
-    final KeyStore keyStore = KeyStore.getInstance(keystoreType.name());
-    try (final FileInputStream fis = new FileInputStream(keystorePath.toFile())) {
-      keyStore.load(fis, keystorePassword.toCharArray());
-    }
-
-    // Initialize the TrustManagerFactory with the keystore
-    final TrustManagerFactory trustManagerFactory =
-        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-    trustManagerFactory.init(keyStore);
-
     return trustManagerFactory;
   }
 }

@@ -175,7 +175,7 @@ public abstract class AbstractArtifactSignerFactory implements ArtifactSignerFac
       throw new SigningMetadataException(
           "tlsTruststorePasswordFile must be specified for a PKCS#12 or JKS truststore");
     }
-    // PKCS12 keystore type also loads JKS files
+    // PKCS12 marks a password-protected keystore; TrustStoreLoader detects PKCS#12 or JKS
     return new TlsOptions(
         Optional.of(TrustStoreType.PKCS12),
         trustStorePath,
