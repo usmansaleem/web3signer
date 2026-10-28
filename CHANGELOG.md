@@ -10,6 +10,9 @@
 ### Breaking Changes
 
 ### CI/Build Enhancements
+- Compiler warnings fail the build again. [#1283][PR_1283]
+
+[PR_1283]: https://github.com/Consensys-Incorporated/web3signer/pull/1283
 
 
 ---
