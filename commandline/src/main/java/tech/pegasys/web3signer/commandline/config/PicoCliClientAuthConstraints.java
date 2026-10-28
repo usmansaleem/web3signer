@@ -57,7 +57,7 @@ public class PicoCliClientAuthConstraints implements ClientAuthConstraints {
   @Option(
       names = "--tls-allow-ca-clients",
       description =
-          "If set to true, allows clients authorized by the JVM default CAs to connect to "
+          "If set to true, allows clients authorized by the JVM's default CAs to connect to "
               + "Web3Signer. Cannot be used with --tls-truststore-file. (Default: false)",
       paramLabel = BOOL_FORMAT_HELP,
       arity = "1")

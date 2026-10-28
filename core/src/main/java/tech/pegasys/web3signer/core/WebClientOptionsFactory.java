@@ -101,7 +101,7 @@ public class WebClientOptionsFactory {
           "Must specify a truststore file if CA-signed option is disabled");
     }
     // otherwise no truststore/known-servers file and caAuthEnabled is true (the default): use the
-    // JVM default CAs
+    // JVM's default CAs
   }
 
   private void applyKeyStoreOptions(

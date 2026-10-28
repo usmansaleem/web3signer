@@ -30,7 +30,7 @@ public final class TrustStoreUtil {
 
   /**
    * Creates Vert.x trust options trusting only the certificates in the given truststore, like the
-   * standard {@code javax.net.ssl.trustStore} it replaces the JVM default CAs. The truststore
+   * standard {@code javax.net.ssl.trustStore} it replaces the JVM's default CAs. The truststore
    * format (PEM, PKCS#12 or JKS) is detected from the file content.
    *
    * @param trustStoreOptions the truststore and its optional password file

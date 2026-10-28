@@ -4,7 +4,7 @@
 ### Security
 
 ### Features Added
-- TLS trust can be configured with a truststore instead of certificate fingerprint files: PKCS#12 (preferred), JKS or PEM certificates, detected from the file content. A password file is required for PKCS#12 and JKS, and not used for PEM. The truststore holds the trusted certificates or their issuing CAs and, like `javax.net.ssl.trustStore`, replaces the system CAs [#1282][PR_1282]:
+- TLS trust can be configured with a truststore instead of certificate fingerprint files: PKCS#12 (preferred), JKS or PEM certificates, detected from the file content. A password file is required for PKCS#12 and JKS, and not used for PEM. The truststore holds the trusted certificates or their issuing CAs and, like `javax.net.ssl.trustStore`, replaces the JVM's default CAs [#1282][PR_1282]:
   - Inbound client authentication: `--tls-truststore-file` and `--tls-truststore-password-file` (cannot be combined with `--tls-allow-ca-clients`).
   - Eth1 downstream web3 provider: `--downstream-http-tls-truststore-file` and `--downstream-http-tls-truststore-password-file`.
   - Hashicorp Vault signing metadata: `tlsTruststoreFile` and `tlsTruststorePasswordFile`; relative paths resolve against the key config directory.

@@ -25,7 +25,7 @@ public interface ClientAuthConstraints {
 
   /**
    * Truststore holding the certificates (or issuing CAs) of authorized clients. Mutually exclusive
-   * with the JVM default CAs ({@link #isCaAuthorizedClientAllowed()}).
+   * with the JVM's default CAs ({@link #isCaAuthorizedClientAllowed()}).
    */
   Optional<TrustStoreOptions> getTrustStoreOptions();
 

@@ -51,8 +51,8 @@ public class PicoCliClientTlsOptions implements ClientTlsOptions {
       description =
           "Path to a truststore containing the certificates, or issuing CA certificates, of web3 "
               + "providers to trust. PKCS#12 (preferred), JKS or PEM; the format is detected from "
-              + "the file content. Replaces the system's default CAs; if not set, the system's "
-              + "default CAs are used.",
+              + "the file content. Replaces the JVM's default CAs; if not set, the JVM's default "
+              + "CAs are used.",
       paramLabel = FILE_FORMAT_HELP,
       arity = "1")
   private Path trustStoreFile;
@@ -70,7 +70,7 @@ public class PicoCliClientTlsOptions implements ClientTlsOptions {
       names = "--downstream-http-tls-ca-auth-enabled",
       description =
           "DEPRECATED: only applies to the deprecated --downstream-http-tls-known-servers-file and "
-              + "will be removed with it. If set, will use the system's CA to validate received "
+              + "will be removed with it. If set, will use the JVM's default CAs to validate received "
               + "server certificates. Defaults to enabled.",
       arity = "1")
   private Boolean caAuthEnabled = null;

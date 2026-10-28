@@ -28,13 +28,13 @@ public interface ClientTlsOptions {
   Optional<Path> getKnownServersFile();
 
   /**
-   * Truststore holding the certificates (or issuing CAs) of trusted servers. Replaces the JVM
+   * Truststore holding the certificates (or issuing CAs) of trusted servers. Replaces the JVM's
    * default CAs.
    */
   Optional<TrustStoreOptions> getTrustStoreOptions();
 
   /**
-   * Whether the JVM default CAs are trusted. Only applies without a truststore; deprecated for
+   * Whether the JVM's default CAs are trusted. Only applies without a truststore; deprecated for
    * removal together with {@link #getKnownServersFile()}.
    */
   boolean isCaAuthEnabled();
