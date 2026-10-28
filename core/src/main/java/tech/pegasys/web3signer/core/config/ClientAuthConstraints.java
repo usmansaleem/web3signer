@@ -18,9 +18,11 @@ import java.util.Optional;
 public interface ClientAuthConstraints {
 
   /**
-   * Fingerprint allowlist of authorized clients. Deprecated for removal in favour of {@link
-   * #getTrustStoreOptions()}.
+   * Fingerprint allowlist of authorized clients.
+   *
+   * @deprecated use {@link #getTrustStoreOptions()}
    */
+  @Deprecated(forRemoval = true)
   Optional<File> getKnownClientsFile();
 
   /**
@@ -30,8 +32,10 @@ public interface ClientAuthConstraints {
   Optional<TrustStoreOptions> getTrustStoreOptions();
 
   /**
-   * Whether clients signed by the JVM's default CAs are authorized. Deprecated for removal in
-   * favour of {@link #getTrustStoreOptions()}.
+   * Whether clients signed by the JVM's default CAs are authorized.
+   *
+   * @deprecated use {@link #getTrustStoreOptions()} holding the client CA certificates
    */
+  @Deprecated(forRemoval = true)
   boolean isCaAuthorizedClientAllowed();
 }

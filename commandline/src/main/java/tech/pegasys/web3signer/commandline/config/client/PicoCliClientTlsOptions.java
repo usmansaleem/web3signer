@@ -77,15 +77,18 @@ public class PicoCliClientTlsOptions implements ClientTlsOptions {
     return Optional.of(keyStoreOptions);
   }
 
+  @Deprecated(forRemoval = true)
   @Override
   public boolean isCaAuthEnabled() {
     return caAuthEnabled == null || caAuthEnabled;
   }
 
+  @Deprecated(forRemoval = true)
   public boolean isCaAuthEnabledSpecified() {
     return caAuthEnabled != null;
   }
 
+  @Deprecated(forRemoval = true)
   @Override
   public Optional<Path> getKnownServersFile() {
     return Optional.ofNullable(knownServersFile);

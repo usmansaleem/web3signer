@@ -22,9 +22,11 @@ public interface ClientTlsOptions {
   Optional<KeyStoreOptions> getKeyStoreOptions();
 
   /**
-   * Fingerprint allowlist of trusted servers. Deprecated for removal in favour of {@link
-   * #getTrustStoreOptions()}.
+   * Fingerprint allowlist of trusted servers.
+   *
+   * @deprecated use {@link #getTrustStoreOptions()}
    */
+  @Deprecated(forRemoval = true)
   Optional<Path> getKnownServersFile();
 
   /**
@@ -34,8 +36,11 @@ public interface ClientTlsOptions {
   Optional<TrustStoreOptions> getTrustStoreOptions();
 
   /**
-   * Whether the JVM's default CAs are trusted. Only applies without a truststore; deprecated for
-   * removal together with {@link #getKnownServersFile()}.
+   * Whether the JVM's default CAs are trusted. Only applies without a truststore.
+   *
+   * @deprecated only used with {@link #getKnownServersFile()}; without a truststore the JVM's
+   *     default CAs are used
    */
+  @Deprecated(forRemoval = true)
   boolean isCaAuthEnabled();
 }

@@ -55,6 +55,7 @@ public class BasicClientAuthConstraints implements ClientAuthConstraints {
     return new BasicClientAuthConstraints(Optional.empty(), true);
   }
 
+  @Deprecated(forRemoval = true)
   @Override
   public Optional<File> getKnownClientsFile() {
     return knownClientsFile;
@@ -65,6 +66,7 @@ public class BasicClientAuthConstraints implements ClientAuthConstraints {
     return trustStoreOptions;
   }
 
+  @Deprecated(forRemoval = true)
   @Override
   public boolean isCaAuthorizedClientAllowed() {
     return allowCaClients;

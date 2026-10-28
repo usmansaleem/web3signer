@@ -48,6 +48,7 @@ public class BasicClientTlsOptions implements ClientTlsOptions {
     return tlsCertificateOptions;
   }
 
+  @Deprecated(forRemoval = true)
   @Override
   public Optional<Path> getKnownServersFile() {
     return knownServersFile;
@@ -58,6 +59,7 @@ public class BasicClientTlsOptions implements ClientTlsOptions {
     return trustStoreOptions;
   }
 
+  @Deprecated(forRemoval = true)
   @Override
   public boolean isCaAuthEnabled() {
     return caAuthEnabled;

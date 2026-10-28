@@ -80,7 +80,12 @@ public class HashicorpSigningMetadata extends SigningMetadata {
     this.keyName = value;
   }
 
-  /** Deprecated for removal: use {@link #setTlsTruststoreFile(Path)} instead. */
+  /**
+   * Sets the known servers (fingerprint) file.
+   *
+   * @deprecated use {@link #setTlsTruststoreFile(Path)}
+   */
+  @Deprecated(forRemoval = true)
   @JsonSetter("tlsKnownServersPath")
   public void setTlsKnownServersPath(final Path value) {
     this.tlsKnownServerFile = value;
@@ -151,6 +156,12 @@ public class HashicorpSigningMetadata extends SigningMetadata {
     return tlsEnabled;
   }
 
+  /**
+   * Returns the known servers (fingerprint) file.
+   *
+   * @deprecated use {@link #getTlsTruststoreFile()}
+   */
+  @Deprecated(forRemoval = true)
   public Path getTlsKnownServerFile() {
     return tlsKnownServerFile;
   }
