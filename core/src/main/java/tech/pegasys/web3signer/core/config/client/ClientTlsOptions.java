@@ -13,6 +13,7 @@
 package tech.pegasys.web3signer.core.config.client;
 
 import tech.pegasys.web3signer.core.config.KeyStoreOptions;
+import tech.pegasys.web3signer.core.config.TrustStoreOptions;
 
 import java.nio.file.Path;
 import java.util.Optional;
@@ -20,7 +21,21 @@ import java.util.Optional;
 public interface ClientTlsOptions {
   Optional<KeyStoreOptions> getKeyStoreOptions();
 
+  /**
+   * Fingerprint allowlist of trusted servers. Deprecated for removal in favour of {@link
+   * #getTrustStoreOptions()}.
+   */
   Optional<Path> getKnownServersFile();
 
+  /**
+   * Truststore holding the certificates (or issuing CAs) of trusted servers. Replaces the JVM
+   * default CAs.
+   */
+  Optional<TrustStoreOptions> getTrustStoreOptions();
+
+  /**
+   * Whether the JVM default CAs are trusted. Only applies without a truststore; deprecated for
+   * removal together with {@link #getKnownServersFile()}.
+   */
   boolean isCaAuthEnabled();
 }

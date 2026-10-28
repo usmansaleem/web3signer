@@ -12,26 +12,18 @@
  */
 package tech.pegasys.web3signer.keystorage.hashicorp;
 
+import tech.pegasys.web3signer.keystorage.common.TrustStoreLoader;
 import tech.pegasys.web3signer.keystorage.hashicorp.config.TlsOptions;
 
 import java.io.FileInputStream;
-import java.io.FileReader;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
-import java.security.cert.Certificate;
-import java.security.cert.CertificateException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Optional;
 import javax.net.ssl.TrustManagerFactory;
 
 import org.apache.tuweni.net.tls.TrustManagerFactories;
-import org.bouncycastle.cert.X509CertificateHolder;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.openssl.PEMParser;
 
 /** Create TrustManagerFactory based on Trust store type. */
 public class TrustManagerFactoryProvider {
@@ -53,7 +45,9 @@ public class TrustManagerFactoryProvider {
                   tlsOptions.getTrustStorePath(),
                   tlsOptions.getTrustStorePassword(),
                   trustStoreType);
-          case PEM -> TrustManagerFactoryProvider.buildFromPemFile(tlsOptions.getTrustStorePath());
+          case PEM ->
+              TrustStoreLoader.createTrustManagerFactory(
+                  tlsOptions.getTrustStorePath(), Optional.empty());
           default ->
               // Tuweni throws an NPE if the trustStorePath has no directory prefix, thus requiring
               // the use of absolutePath.
@@ -78,36 +72,5 @@ public class TrustManagerFactoryProvider {
     trustManagerFactory.init(keyStore);
 
     return trustManagerFactory;
-  }
-
-  private static TrustManagerFactory buildFromPemFile(final Path caPemFile)
-      throws GeneralSecurityException, IOException {
-    final List<Certificate> certificates = loadCertificatesFromPEM(caPemFile);
-    KeyStore caKeystore = KeyStore.getInstance(KeyStore.getDefaultType());
-    caKeystore.load(null, null);
-    for (int i = 0; i < certificates.size(); i++) {
-      caKeystore.setCertificateEntry("ca-" + i, certificates.get(i));
-    }
-    TrustManagerFactory trustManagerFactory =
-        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-    trustManagerFactory.init(caKeystore);
-    return trustManagerFactory;
-  }
-
-  private static List<Certificate> loadCertificatesFromPEM(Path caPemFile)
-      throws IOException, CertificateException {
-    try (FileReader fileReader = new FileReader(caPemFile.toFile(), StandardCharsets.UTF_8);
-        PEMParser pemParser = new PEMParser(fileReader)) {
-
-      JcaX509CertificateConverter certConverter = new JcaX509CertificateConverter();
-      certConverter.setProvider(new BouncyCastleProvider());
-
-      List<Certificate> certificates = new ArrayList<>();
-      Object pemObject;
-      while ((pemObject = pemParser.readObject()) != null) {
-        certificates.add(certConverter.getCertificate((X509CertificateHolder) pemObject));
-      }
-      return certificates;
-    }
   }
 }

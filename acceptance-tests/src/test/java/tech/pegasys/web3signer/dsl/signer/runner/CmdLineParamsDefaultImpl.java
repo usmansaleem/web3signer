@@ -209,6 +209,20 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
           params.add("--tls-known-clients-file");
           params.add(constraints.getKnownClientsFile().get().toString());
         }
+        constraints
+            .getTrustStoreOptions()
+            .ifPresent(
+                trustStore -> {
+                  params.add("--tls-truststore-file");
+                  params.add(trustStore.trustStoreFile().toString());
+                  trustStore
+                      .passwordFile()
+                      .ifPresent(
+                          passwordFile -> {
+                            params.add("--tls-truststore-password-file");
+                            params.add(passwordFile.toString());
+                          });
+                });
         if (constraints.isCaAuthorizedClientAllowed()) {
           params.add("--tls-allow-ca-clients=true");
         }
@@ -242,6 +256,20 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       params.add("--downstream-http-tls-known-servers-file");
       params.add(clientTlsOptions.getKnownServersFile().get().toAbsolutePath().toString());
     }
+    clientTlsOptions
+        .getTrustStoreOptions()
+        .ifPresent(
+            trustStore -> {
+              params.add("--downstream-http-tls-truststore-file");
+              params.add(trustStore.trustStoreFile().toAbsolutePath().toString());
+              trustStore
+                  .passwordFile()
+                  .ifPresent(
+                      passwordFile -> {
+                        params.add("--downstream-http-tls-truststore-password-file");
+                        params.add(passwordFile.toAbsolutePath().toString());
+                      });
+            });
     if (!clientTlsOptions.isCaAuthEnabled()) {
       params.add("--downstream-http-tls-ca-auth-enabled");
       params.add("false");

@@ -17,7 +17,17 @@ import java.util.Optional;
 
 public interface ClientAuthConstraints {
 
+  /**
+   * Fingerprint allowlist of authorized clients. Deprecated for removal in favour of {@link
+   * #getTrustStoreOptions()}.
+   */
   Optional<File> getKnownClientsFile();
+
+  /**
+   * Truststore holding the certificates (or issuing CAs) of authorized clients. Mutually exclusive
+   * with the JVM default CAs ({@link #isCaAuthorizedClientAllowed()}).
+   */
+  Optional<TrustStoreOptions> getTrustStoreOptions();
 
   boolean isCaAuthorizedClientAllowed();
 }
