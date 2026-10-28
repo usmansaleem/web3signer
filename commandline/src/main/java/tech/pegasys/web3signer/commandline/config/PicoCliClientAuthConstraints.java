@@ -29,8 +29,7 @@ public class PicoCliClientAuthConstraints implements ClientAuthConstraints {
   @Option(
       names = "--tls-known-clients-file",
       description =
-          "DEPRECATED: use --tls-truststore-file instead; this option will be removed in a future "
-              + "release. Path to a file containing the fingerprints of authorized clients.",
+          "Deprecated, use --tls-truststore-file. File of authorized client certificate fingerprints.",
       paramLabel = FILE_FORMAT_HELP,
       arity = "1")
   private File tlsKnownClientsFile = null;
@@ -38,18 +37,14 @@ public class PicoCliClientAuthConstraints implements ClientAuthConstraints {
   @Option(
       names = "--tls-truststore-file",
       description =
-          "Path to a truststore containing the certificates, or issuing CA certificates, of "
-              + "authorized clients. PKCS#12 (preferred), JKS or PEM; the format is detected from "
-              + "the file content.",
+          "Truststore of authorized client certificates or their CAs (PKCS#12, JKS or PEM).",
       paramLabel = FILE_FORMAT_HELP,
       arity = "1")
   private Path tlsTrustStoreFile = null;
 
   @Option(
       names = "--tls-truststore-password-file",
-      description =
-          "Path to a file containing the password used to open the truststore. Required for "
-              + "PKCS#12 and JKS truststores, not used for PEM.",
+      description = "File containing the truststore password (not needed for PEM).",
       paramLabel = FILE_FORMAT_HELP,
       arity = "1")
   private Path tlsTrustStorePasswordFile = null;
@@ -57,8 +52,8 @@ public class PicoCliClientAuthConstraints implements ClientAuthConstraints {
   @Option(
       names = "--tls-allow-ca-clients",
       description =
-          "If set to true, allows clients authorized by the JVM's default CAs to connect to "
-              + "Web3Signer. Cannot be used with --tls-truststore-file. (Default: false)",
+          "If set to true, allows clients signed by the JVM's default CAs. Cannot be used with "
+              + "--tls-truststore-file. (Default: false)",
       paramLabel = BOOL_FORMAT_HELP,
       arity = "1")
   private Boolean tlsAllowCaClients = false;

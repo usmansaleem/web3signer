@@ -39,9 +39,8 @@ public class PicoCliClientTlsOptions implements ClientTlsOptions {
   @Option(
       names = "--downstream-http-tls-known-servers-file",
       description =
-          "DEPRECATED: use --downstream-http-tls-truststore-file instead; this option will be "
-              + "removed in a future release. Path to a file containing the hostname, port and "
-              + "certificate fingerprints of web3 providers to trust.",
+          "Deprecated, use --downstream-http-tls-truststore-file. File of trusted web3 provider "
+              + "hostnames, ports and certificate fingerprints.",
       paramLabel = FILE_FORMAT_HELP,
       arity = "1")
   private Path knownServersFile;
@@ -49,19 +48,15 @@ public class PicoCliClientTlsOptions implements ClientTlsOptions {
   @Option(
       names = "--downstream-http-tls-truststore-file",
       description =
-          "Path to a truststore containing the certificates, or issuing CA certificates, of web3 "
-              + "providers to trust. PKCS#12 (preferred), JKS or PEM; the format is detected from "
-              + "the file content. Replaces the JVM's default CAs; if not set, the JVM's default "
-              + "CAs are used.",
+          "Truststore of trusted web3 provider certificates or their CAs (PKCS#12, JKS or PEM). "
+              + "Replaces the JVM's default CAs.",
       paramLabel = FILE_FORMAT_HELP,
       arity = "1")
   private Path trustStoreFile;
 
   @Option(
       names = "--downstream-http-tls-truststore-password-file",
-      description =
-          "Path to a file containing the password used to open the truststore. Required for "
-              + "PKCS#12 and JKS truststores, not used for PEM.",
+      description = "File containing the truststore password (not needed for PEM).",
       paramLabel = FILE_FORMAT_HELP,
       arity = "1")
   private Path trustStorePasswordFile;
@@ -69,9 +64,8 @@ public class PicoCliClientTlsOptions implements ClientTlsOptions {
   @Option(
       names = "--downstream-http-tls-ca-auth-enabled",
       description =
-          "DEPRECATED: only applies to the deprecated --downstream-http-tls-known-servers-file and "
-              + "will be removed with it. If set, will use the JVM's default CAs to validate received "
-              + "server certificates. Defaults to enabled.",
+          "Deprecated, only applies to --downstream-http-tls-known-servers-file. If set, also "
+              + "trusts the JVM's default CAs. Defaults to enabled.",
       arity = "1")
   private Boolean caAuthEnabled = null;
 
