@@ -8,6 +8,11 @@ All Azure Key Vault acceptance tests run automatically against a local Testconta
 the image pinned by `azureKeyVaultEmulatorImage` in `gradle/versions.gradle`, requiring no manual
 setup, credentials, or Azure subscription.
 
+### Hashicorp Vault
+
+Hashicorp Vault acceptance tests start a fresh Testcontainers instance of the image pinned by
+`hashicorpVaultImage` in `gradle/versions.gradle` for every test, requiring no manual setup.
+
 ### GCP Secret Manager
 
 The GCP Secret Manager acceptance tests run automatically against a local Testcontainers instance of
