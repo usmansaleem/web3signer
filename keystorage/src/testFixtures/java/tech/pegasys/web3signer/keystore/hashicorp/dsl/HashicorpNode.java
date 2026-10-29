@@ -126,11 +126,15 @@ public class HashicorpNode implements AutoCloseable {
     container.start();
   }
 
-  /** Stops and removes the container. Safe to call more than once. */
+  /** Stops and removes the container and closes the HTTP client. Safe to call more than once. */
   @Override
   public void close() {
     LOG.info("Shutting down Vault server container...");
-    container.stop();
+    try {
+      container.stop();
+    } finally {
+      httpClient.close();
+    }
   }
 
   public String getVaultToken() {

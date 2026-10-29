@@ -29,33 +29,17 @@ import java.security.cert.CertificateEncodingException;
 import java.util.Collections;
 import java.util.Optional;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class HashicorpVaultAccessAcceptanceTest {
 
-  private static final Logger LOG = LogManager.getLogger();
-
-  private HashicorpNode hashicorpNode;
+  @AutoClose private HashicorpNode hashicorpNode;
 
   private final String SECRET_KEY = "storedSecetKey";
   private final String SECRET_VALUE = "secretValue";
   private final String KEY_SUBPATH = "acceptanceTestSecret";
-
-  @AfterEach
-  void cleanup() {
-    try {
-      if (hashicorpNode != null) {
-        hashicorpNode.close();
-        hashicorpNode = null;
-      }
-    } catch (final Exception e) {
-      LOG.error("Failed to shutdown Hashicorp Node.", e);
-    }
-  }
 
   @Test
   void keyCanBeExtractedFromVault() {
