@@ -13,12 +13,12 @@
 ### CI/Build Enhancements
 - Besu upgraded to 26.10.2. [#1285][PR_1285]
 - Compiler warnings fail the build again. [#1283][PR_1283]
-- Gradle wrapper upgraded to 9.8.2. [#TBD][PR_TBD]
+- Gradle wrapper upgraded to 9.8.2. [#1287][PR_1287]
 
 <!-- Link references for the entries above; not changelog entries. -->
 [PR_1283]: https://github.com/Consensys-Incorporated/web3signer/pull/1283
 [PR_1285]: https://github.com/Consensys-Incorporated/web3signer/pull/1285
-[PR_TBD]: https://github.com/Consensys-Incorporated/web3signer/pull/TBD
+[PR_1287]: https://github.com/Consensys-Incorporated/web3signer/pull/1287
 
 
 ---
