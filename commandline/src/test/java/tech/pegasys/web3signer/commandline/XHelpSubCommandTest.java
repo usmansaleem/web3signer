@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 ConsenSys AG.
+ * Copyright 2026 Consensys Incorporated.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -55,6 +55,7 @@ public class XHelpSubCommandTest {
           "--Xazure-endpoint-override",
           "--Xazure-authority-host-override",
           "--Xazure-trust-certificate-override",
+          "--Xgcp-endpoint-override",
           "--Xkey-manager-skip-keystore-storage");
 
   /** The only unstable options on the eth1 subtree. */

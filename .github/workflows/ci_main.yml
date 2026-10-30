@@ -23,10 +23,15 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
-    environment: dev
     outputs:
       publish-version: ${{ steps.project-version.outputs.publish-version }}
+    services:
+      # Serves the AWS Secrets Manager and KMS tests without AWS credentials. The image's own
+      # healthcheck gates the job until the gateway answers.
+      ministack:
+        image: ministackorg/ministack:1.5.33@sha256:b58186186515a372798ccf0ca9975c295db219b5a811975337d6967b968e07b4
+        ports:
+          - 4566:4566
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -66,19 +71,20 @@ jobs:
             exit 1
           fi
 
-      # v3
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-        if: (github.ref == 'refs/heads/master' && github.event_name != 'pull_request') || startsWith(github.ref, 'refs/tags/')
-        with:
-          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
       - name: Build and Test
         id: build-test
         uses: ./.github/actions/build-test
         env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          # Any credentials work against ministack. RW_ and the default ones stand in for the
+          # read-write and read-only AWS users, _TEST2 for a second key pair.
+          RW_AWS_ACCESS_KEY_ID: test
+          RW_AWS_SECRET_ACCESS_KEY: test
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_ACCESS_KEY_ID_TEST2: test2
+          AWS_SECRET_ACCESS_KEY_TEST2: test2
+          AWS_REGION: us-east-2
+          AWS_ENDPOINT_OVERRIDE: http://localhost:4566
         with:
           disable-test: 'false'
 
@@ -86,7 +92,7 @@ jobs:
         run: ./gradlew distTar distZip
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: distribution
           path: build/distributions/
@@ -97,6 +103,9 @@ jobs:
     name: docker-build (${{ matrix.variant }}, ${{ matrix.platform.arch }})
     needs: build
     environment: docker
+    permissions:
+      contents: read
+      id-token: write   # Docker Hub OIDC login for the push
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +127,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: distribution
           path: build/distributions/
@@ -210,13 +219,18 @@ jobs:
           SUMMARY_CONTENT+="\n</code></pre></details>\n"
           echo -e "$SUMMARY_CONTENT" >> $GITHUB_STEP_SUMMARY
 
-      # v4.6.0
+      # Docker Hub OIDC: short-lived push token issued to the docker environment, no stored password.
+      # Login comes after the smoke-test build so the push below, which reuses its cache, is all that
+      # runs on the token.
+      # v4.7.0
       - name: Login to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
         if: steps.docker-metadata.outputs.push == 'true'
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
+          DOCKERHUB_OIDC_EXPIREIN: 600
         with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: consensys
 
       # v7.4.0
       - name: Build and push by digest
@@ -246,7 +260,7 @@ jobs:
 
       - name: Upload digest
         if: steps.docker-metadata.outputs.push == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digests-${{ matrix.variant }}-${{ matrix.platform.arch }}
           path: ${{ runner.temp }}/digests/${{ matrix.variant }}/*
@@ -260,7 +274,7 @@ jobs:
     environment: docker
     permissions:
       contents: read
-      id-token: write   # keyless cosign via GitHub OIDC
+      id-token: write   # Docker Hub OIDC login and keyless cosign
     strategy:
       fail-fast: false
       matrix:
@@ -293,18 +307,20 @@ jobs:
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Download per-arch digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: digests-${{ matrix.variant }}-*
           path: ${{ runner.temp }}/digests
           merge-multiple: true
 
-      # v4.6.0
+      # Docker Hub OIDC; the login also covers cosign pushing the signature.
+      # v4.7.0
       - name: Login to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
         with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: consensys
 
       # v4.4.1
       - name: Set up Docker Buildx
@@ -363,7 +379,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: distribution
           path: build/distributions/

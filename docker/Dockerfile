@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # Distribution source selection.
 # - TAR_FILE set (preferred, used by CI): copy the pre-built distribution from the build context.
@@ -11,8 +11,12 @@ ARG DIST_SOURCE=${DIST_FROM_TAR:-gradle}
 # Build the distribution from source. Runs on the build host's platform: the
 # distribution is architecture-independent (jblst ships natives for all arches).
 # The source tree is bind-mounted (not copied) so it never lands in a layer; .git
-# must be in the build context for correct version information.
+# must be in the build context for correct version information, and the version
+# calculation runs the git CLI, which the JDK image does not ship.
 FROM --platform=$BUILDPLATFORM eclipse-temurin:25.0.4_7-jdk@sha256:97014c4b396021f9ddb7d592a7dbedb0c4e4215c29e03dc01c393558aefb71c2 AS dist-gradle
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 RUN --mount=type=bind,target=/src,rw \
     --mount=type=cache,id=web3signer-gradle,target=/root/.gradle,sharing=locked \
@@ -21,22 +25,41 @@ RUN --mount=type=bind,target=/src,rw \
     cp build/distributions/web3signer-*.tar.gz /dist/web3signer.tar.gz
 
 # Use a pre-built distribution from the build context.
-FROM alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS dist-tar
+FROM alpine@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS dist-tar
 ARG TAR_FILE
 COPY ${TAR_FILE} /dist/web3signer.tar.gz
 
 FROM dist-${DIST_SOURCE} AS dist
 
 # Validate and extract the distribution
-FROM alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS app-extract
+FROM alpine@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS app-extract
 COPY --from=dist /dist/web3signer.tar.gz /tmp/web3signer.tar.gz
 RUN gzip -t /tmp/web3signer.tar.gz || (echo "ERROR: web3signer distribution is not a valid gzip archive" && exit 1) && \
     mkdir -p /opt/web3signer && \
     tar -xzf /tmp/web3signer.tar.gz -C /opt/web3signer --strip-components=1 && \
     rm /tmp/web3signer.tar.gz
 
+# Fetch the Eclipse Temurin JRE release tarball and verify it against
+# the SHA-256 published by Adoptium for that release. The official
+# eclipse-temurin Docker image lags the binary release, so the JRE is pulled
+# straight from the Adoptium GitHub release instead of an eclipse-temurin tag.
+FROM alpine@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS jre-fetch
+ARG TARGETARCH
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) JRE_ARCH=x64;     JRE_SHA256=6fac98f0c8202efc3135a9e9e42aa61963ec42d1c5cbb40caf231e7b14a24ef6 ;; \
+      arm64) JRE_ARCH=aarch64; JRE_SHA256=963931723891302ebb2687178532c3d793d71e2577cd058061c7efb396140a86 ;; \
+      *) echo "Unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    wget -q -O /tmp/jre.tar.gz \
+      "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5%2B8/OpenJDK25U-jre_${JRE_ARCH}_linux_hotspot_25.0.5_8.tar.gz"; \
+    echo "${JRE_SHA256}  /tmp/jre.tar.gz" | sha256sum -c -; \
+    mkdir -p /opt/java/openjdk; \
+    tar -xzof /tmp/jre.tar.gz -C /opt/java/openjdk --strip-components=1; \
+    rm /tmp/jre.tar.gz
+
 # Final image with Ubuntu base for latest security patches
-FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 
 ARG BUILD_DATE
 ARG VCS_REF
@@ -59,17 +82,20 @@ ENV JAVA_HOME="/opt/java/openjdk" \
     WEB3SIGNER_HTTP_LISTEN_HOST="0.0.0.0" \
     WEB3SIGNER_METRICS_HOST="0.0.0.0"
 
-# Apply all security updates, install dependencies and create user
+# Apply all security updates, install dependencies and create user.
+# Also drop Pebble, the service manager the rock-built Ubuntu base ships outside dpkg. Web3Signer never runs
+# it, and its bundled Go stdlib carries CVE-2026-78667, CVE-2026-78669, CVE-2026-97031 and CVE-2026-111943.
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl && \
     rm -rf /var/lib/apt/lists/* && \
+    rm -rf /usr/bin/pebble /var/lib/pebble && \
     useradd --system --no-create-home --shell /bin/false web3signer
 
-# Copy full JRE from Eclipse Temurin (no module complexity, all features available)
-COPY --from=eclipse-temurin:25.0.4_7-jre@sha256:bb036ed6cfdc57e3da7c22634d15f1b840d2caf76183861c80e81ca4b5104abb /opt/java/openjdk /opt/java/openjdk
+# Copy full Eclipse Temurin JRE 25.0.5+8 (no module complexity, all features available)
+COPY --from=jre-fetch /opt/java/openjdk /opt/java/openjdk
 COPY --from=app-extract --chown=web3signer:web3signer /opt/web3signer /opt/web3signer
 
 USER web3signer
