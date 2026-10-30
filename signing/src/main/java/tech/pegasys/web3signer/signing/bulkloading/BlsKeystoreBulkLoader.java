@@ -15,7 +15,6 @@ package tech.pegasys.web3signer.signing.bulkloading;
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.web3signer.bls.keystore.KeyStore;
 import tech.pegasys.web3signer.bls.keystore.KeyStoreLoader;
-import tech.pegasys.web3signer.bls.keystore.KeyStoreValidationException;
 import tech.pegasys.web3signer.bls.keystore.model.KeyStoreData;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.BlsArtifactSigner;
@@ -120,7 +119,7 @@ public class BlsKeystoreBulkLoader {
       final String password = passwordReader.readPassword(fileNameWithoutExt + ".txt");
       final BLSKeyPair keyPair = KeyStore.decrypt(password, keyStoreData);
       return Optional.of(new BlsArtifactSigner(keyPair, SignerOrigin.FILE_KEYSTORE));
-    } catch (final KeyStoreValidationException | IOException e) {
+    } catch (final IOException | RuntimeException e) {
       LOG.error("Keystore could not be loaded {}", keystoreFile, e);
       return Optional.empty();
     }

@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -808,7 +809,7 @@ class SignerLoaderTest {
   }
 
   @Test
-  void filesNotProcessedBeforeLoaderIsClosedAreReportedAsFailed() throws Exception {
+  void filesNotProcessedBeforeLoaderIsClosedAreUnprocessedNotErrors() throws Exception {
     final Set<String> files =
         Set.of(
             configsDirectory.resolve("1.yaml").toString(),
@@ -818,13 +819,16 @@ class SignerLoaderTest {
     final SignerLoader.LoadResult result =
         signerLoader.processInBatches(files, signerParser, new AtomicLong(), files.size());
 
-    // the files were not deleted, so their previously loaded signers must be kept
+    // the files were not deleted, so their previously loaded signers must be kept, but they did
+    // not fail either
     assertThat(result.loadedSigners()).isEmpty();
-    assertThat(result.failedPaths()).containsExactlyInAnyOrderElementsOf(files);
+    assertThat(result.unprocessedPaths()).containsExactlyInAnyOrderElementsOf(files);
+    assertThat(result.failedPaths()).isEmpty();
+    assertThat(result.errorCount()).isZero();
   }
 
   @Test
-  void interruptedFileIsReportedAsFailed() throws Exception {
+  void interruptedFileIsReportedAsUnprocessed() throws Exception {
     final Path file =
         createFileInConfigsDirectory(
             configFileName(blsKeyPair1), blsKeyPair1.getSecretKey().toBytes().toHexString());
@@ -838,11 +842,12 @@ class SignerLoaderTest {
     }
 
     assertThat(result.loadedSigners()).isEmpty();
-    assertThat(result.failedPaths()).containsExactly(file.toString());
+    assertThat(result.unprocessedPaths()).containsExactly(file.toString());
+    assertThat(result.errorCount()).isZero();
   }
 
   @Test
-  void cancelledFileIsReportedAsFailed() throws Exception {
+  void cancelledFileIsReportedAsUnprocessed() throws Exception {
     final String file = configsDirectory.resolve("1.yaml").toString();
     final CompletableFuture<SignerLoader.LoadResult> cancelled = new CompletableFuture<>();
     cancelled.cancel(true);
@@ -852,7 +857,38 @@ class SignerLoaderTest {
 
     // the file was not processed, it was not deleted: its previously loaded signers must be kept
     assertThat(result.loadedSigners()).isEmpty();
-    assertThat(result.failedPaths()).containsExactly(file);
+    assertThat(result.unprocessedPaths()).containsExactly(file);
+    assertThat(result.errorCount()).isZero();
+  }
+
+  @Test
+  void interruptWhileCollectingKeepsCompletedResultsAndCancelsTheRest() {
+    final String pending = configsDirectory.resolve("1.yaml").toString();
+    final String loaded = configsDirectory.resolve("2.yaml").toString();
+    final String failed = configsDirectory.resolve("3.yaml").toString();
+    final ArtifactSigner signer = mock(ArtifactSigner.class);
+    final CompletableFuture<SignerLoader.LoadResult> pendingFuture = new CompletableFuture<>();
+
+    final SignerLoader.LoadResult result;
+    Thread.currentThread().interrupt();
+    try {
+      result =
+          signerLoader.collectBatchResults(
+              List.of(
+                  pendingFuture,
+                  CompletableFuture.completedFuture(
+                      SignerLoader.LoadResult.loaded(loaded, Set.of(signer))),
+                  CompletableFuture.completedFuture(SignerLoader.LoadResult.failed(failed))),
+              List.of(pending, loaded, failed));
+      assertThat(Thread.currentThread().isInterrupted()).isTrue();
+    } finally {
+      Thread.interrupted();
+    }
+
+    assertThat(result.loadedSigners()).containsOnlyKeys(loaded);
+    assertThat(result.failedPaths()).containsExactly(failed);
+    assertThat(result.unprocessedPaths()).containsExactly(pending);
+    assertThat(pendingFuture).isCancelled();
   }
 
   @Test

@@ -15,6 +15,7 @@ package tech.pegasys.web3signer.tests.keymanager;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static tech.pegasys.web3signer.dsl.utils.Eth2RequestUtils.createAttestationRequest;
 
@@ -26,8 +27,11 @@ import tech.pegasys.web3signer.signing.KeyType;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.restassured.http.ContentType;
@@ -35,6 +39,7 @@ import io.restassured.response.Response;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.apache.tuweni.bytes.Bytes;
+import org.awaitility.Awaitility;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 
@@ -196,6 +201,55 @@ public class ImportKeystoresAcceptanceTest extends KeyManagerTestBase {
     // Sign with it
     final Eth2SigningRequestBody request = createAttestationRequest(7, 8, UInt64.ZERO);
     signer.eth2Sign(PUBLIC_KEY, request).then().assertThat().statusCode(200);
+  }
+
+  @Test
+  public void reloadKeepsImportedKeyWhileItsKeystoreFailsAndRemovesItOnceDeleted()
+      throws IOException, URISyntaxException {
+    setupSignerWithKeyManagerApi();
+    callImportKeystores(composeRequestBody())
+        .then()
+        .statusCode(200)
+        .body("data.status", hasItem("imported"));
+    final Path keyConfigFile = testDirectory.resolve(PUBLIC_KEY + ".yaml");
+    assertThat(keyConfigFile).exists();
+
+    // the imported keystore can no longer be loaded: the key stays, enabled for signing
+    Files.writeString(testDirectory.resolve(PUBLIC_KEY + ".json"), "not a keystore");
+    reloadAndAwaitStatus("completed_with_errors");
+    validateApiResponse(callListKeys(), "data.validating_pubkey", hasItem(PUBLIC_KEY));
+    signer
+        .eth2Sign(PUBLIC_KEY, createAttestationRequest(7, 8, UInt64.ZERO))
+        .then()
+        .assertThat()
+        .statusCode(200);
+
+    // its key config file is deleted while an unrelated key config file is corrupt: the key goes
+    // away, the unrelated failure does not keep it
+    Files.delete(keyConfigFile);
+    Files.writeString(testDirectory.resolve("unrelated.yaml"), "not: [valid");
+    signer.callReload().then().statusCode(202);
+    Awaitility.await()
+        .atMost(10, TimeUnit.SECONDS)
+        .pollInterval(500, TimeUnit.MILLISECONDS)
+        .untilAsserted(
+            () -> {
+              validateApiResponse(callListKeys(), "data.validating_pubkey", empty());
+              signer
+                  .getReloadStatus()
+                  .then()
+                  .statusCode(200)
+                  .body("status", equalTo("completed_with_errors"));
+            });
+  }
+
+  private void reloadAndAwaitStatus(final String status) {
+    signer.callReload().then().statusCode(202);
+    Awaitility.await()
+        .atMost(10, TimeUnit.SECONDS)
+        .pollInterval(500, TimeUnit.MILLISECONDS)
+        .untilAsserted(
+            () -> signer.getReloadStatus().then().statusCode(200).body("status", equalTo(status)));
   }
 
   @Test

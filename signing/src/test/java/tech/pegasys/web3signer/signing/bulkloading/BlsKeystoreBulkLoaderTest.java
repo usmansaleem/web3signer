@@ -17,15 +17,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.web3signer.BLSTestUtil;
 import tech.pegasys.web3signer.KeystoreUtil;
+import tech.pegasys.web3signer.bls.keystore.KeyStoreLoader;
+import tech.pegasys.web3signer.bls.keystore.model.Checksum;
+import tech.pegasys.web3signer.bls.keystore.model.Cipher;
+import tech.pegasys.web3signer.bls.keystore.model.Crypto;
+import tech.pegasys.web3signer.bls.keystore.model.KeyStoreData;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.config.SignerSourceResult;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.Collection;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.tuweni.bytes.Bytes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -198,6 +205,47 @@ class BlsKeystoreBulkLoaderTest {
     assertThat(recovered.artifactSigners()).hasSize(1);
     assertThatSignerHasPublicKey(recovered.artifactSigners(), KEY_PAIR_2);
     assertThat(recovered.errorCount()).isZero();
+  }
+
+  @Test
+  void keystoreFailingWithUncheckedExceptionIsReportedAsFailedFile(
+      final @TempDir Path keystoreDir, final @TempDir Path passwordDir) throws Exception {
+    final Path keystore1 =
+        KeystoreUtil.createKeystore(KEY_PAIR_1, keystoreDir, passwordDir, KEYSTORE_PASSWORD_1)
+            .getKey();
+    KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
+    writeTruncatedCipherMessage(keystore1, KEYSTORE_PASSWORD_1);
+
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+
+    assertThat(result.artifactSigners()).hasSize(1);
+    assertThatSignerHasPublicKey(result.artifactSigners(), KEY_PAIR_2);
+    assertThat(result.failedFiles()).containsExactly(keystore1.toString());
+    assertThat(result.errorCount()).isEqualTo(1);
+    assertThat(result.sourceFailed()).isFalse();
+  }
+
+  /**
+   * Truncates the encrypted key and recomputes the checksum: the password is accepted, but the
+   * decrypted key is not 32 bytes, so decryption fails with an unchecked exception.
+   */
+  private static void writeTruncatedCipherMessage(final Path keystoreFile, final String password)
+      throws Exception {
+    final KeyStoreData data = KeyStoreLoader.loadFromFile(keystoreFile.toUri());
+    final Crypto crypto = data.crypto();
+    final Bytes message = crypto.cipher().message().slice(0, 16);
+    final Bytes decryptionKey = crypto.kdf().param().generateDecryptionKey(password);
+    final Bytes checksum =
+        Bytes.wrap(
+            MessageDigest.getInstance("SHA-256")
+                .digest(Bytes.concatenate(decryptionKey.slice(16, 16), message).toArrayUnsafe()));
+    final Crypto truncated =
+        new Crypto(
+            crypto.kdf(),
+            new Checksum(checksum),
+            new Cipher(crypto.cipher().function(), crypto.cipher().params(), message));
+    KeyStoreLoader.saveToFile(keystoreFile, new KeyStoreData(truncated, data.pubkey(), ""));
   }
 
   @Test

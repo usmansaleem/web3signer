@@ -7,7 +7,7 @@
 ### Features Added
 
 ### Bugs Fixed
-- `POST /reload` no longer removes keys, or disables them in slashing protection, when their keystore source fails to load; only deleted keys are removed. [#1251][PR_1251]
+- `POST /reload` no longer removes keys, or disables them in slashing protection, when their keystore source fails to load; only deleted keys are removed. This includes keys imported through the Key Manager API, which are kept while their key config file fails to load. [#1251][PR_1251]
 
 ### Breaking Changes
 

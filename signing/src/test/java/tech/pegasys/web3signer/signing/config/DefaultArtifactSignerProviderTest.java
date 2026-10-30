@@ -582,9 +582,11 @@ class DefaultArtifactSignerProviderTest {
   }
 
   @Test
-  void signerAddedAtRuntimeIsRetainedWhileSourceFailsAndRemovedOnCleanLoad() throws Exception {
+  void importedSignerIsRetainedWhileItsKeyConfigFileFailsAndRemovedOnceTheFileIsGone()
+      throws Exception {
     final ArtifactSigner loadedSigner = mockSigner(PUBLIC_KEY1);
     final ArtifactSigner importedSigner = mockSigner(PUBLIC_KEY2);
+    final Path importedFile = Path.of("config", "2.yaml");
 
     final List<Set<String>> removedCaptures = new ArrayList<>();
     final BiConsumer<Set<String>, Set<String>> callback =
@@ -597,21 +599,84 @@ class DefaultArtifactSignerProviderTest {
         new DefaultArtifactSignerProvider(resultsRef::get, Optional.of(callback), Optional.empty());
     signerProvider.load().get();
 
-    // key manager API import: the key is added to the provider but not to the loaders
-    signerProvider.addSigner(importedSigner).get();
+    // key manager API import: the key config file is written, then the key is added
+    signerProvider.addSigner(importedSigner, Optional.of(importedFile)).get();
 
-    // a source error must not disable the imported key
+    // the key config source fails as a whole: the imported key is not disabled
     resultsRef.set(List.of(SignerSourceResult.sourceFailure("key config files")));
     assertThat(signerProvider.load().get()).isEqualTo(1);
     assertThat(signerProvider.availableIdentifiers())
         .containsExactlyInAnyOrder(PUBLIC_KEY1, PUBLIC_KEY2);
     assertThat(removedCaptures.get(1)).isEmpty();
 
-    // once the source loads cleanly, the imported key is gone unless its file is on disk
+    // its key config file fails to load: still kept
+    resultsRef.set(
+        List.of(
+            fileResult(
+                "key config files",
+                Map.of("/config/1.yaml", loadedSigner),
+                Set.of(SignerLoader.fileName(importedFile)))));
+    signerProvider.load().get();
+    assertThat(signerProvider.availableIdentifiers())
+        .containsExactlyInAnyOrder(PUBLIC_KEY1, PUBLIC_KEY2);
+    assertThat(removedCaptures.get(2)).isEmpty();
+
+    // its key config file is gone: removed
     resultsRef.set(List.of(fileResult("key config files", Map.of("/config/1.yaml", loadedSigner))));
     assertThat(signerProvider.load().get()).isZero();
     assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
-    assertThat(removedCaptures.get(2)).containsExactly(PUBLIC_KEY2);
+    assertThat(removedCaptures.get(3)).containsExactly(PUBLIC_KEY2);
+  }
+
+  @Test
+  void importedSignerWhoseFileIsGoneIsRemovedWhileAnUnrelatedFileFails() throws Exception {
+    final ArtifactSigner keystoreSigner = mockSigner(PUBLIC_KEY1);
+    final ArtifactSigner importedSigner = mockSigner(PUBLIC_KEY2);
+
+    final List<Set<String>> removedCaptures = new ArrayList<>();
+    final BiConsumer<Set<String>, Set<String>> callback =
+        (added, removed) -> removedCaptures.add(Set.copyOf(removed));
+
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(
+                fileResult("key config files", Map.of()),
+                fileResult("bls keystores", Map.of("/keystores/1.json", keystoreSigner))));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.of(callback), Optional.empty());
+    signerProvider.load().get();
+    signerProvider.addSigner(importedSigner, Optional.of(Path.of("config", "2.yaml"))).get();
+
+    // the imported key's file is gone while an unrelated keystore is permanently corrupt
+    resultsRef.set(
+        List.of(
+            fileResult("key config files", Map.of()),
+            fileResult(
+                "bls keystores",
+                Map.of("/keystores/1.json", keystoreSigner),
+                Set.of("/keystores/corrupt.json"))));
+    assertThat(signerProvider.load().get()).isEqualTo(1);
+
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
+    assertThat(removedCaptures.get(1)).containsExactly(PUBLIC_KEY2);
+  }
+
+  @Test
+  void signerAddedInMemoryOnlyIsRemovedByNextLoadEvenIfSourcesFail() throws Exception {
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(
+                fileResult("key config files", Map.of("/config/1.yaml", mockSigner(PUBLIC_KEY1)))));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.empty(), Optional.empty());
+    signerProvider.load().get();
+
+    // key manager API import without keystore storage: no file, not part of any source
+    signerProvider.addSigner(mockSigner(PUBLIC_KEY2), Optional.empty()).get();
+    resultsRef.set(List.of(SignerSourceResult.sourceFailure("key config files")));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
   }
 
   @Test
@@ -634,33 +699,38 @@ class DefaultArtifactSignerProviderTest {
   }
 
   @Test
-  void signerReimportedAfterRemovalIsRetainedWhileAnotherSourceFails() throws Exception {
+  void signerReimportedAfterRemovalIsAttributedToItsNewFile() throws Exception {
     final ArtifactSigner configSigner = mockSigner(PUBLIC_KEY1);
-    final ArtifactSigner keystoreSigner = mockSigner(PUBLIC_KEY2);
+    final Path configFile = Path.of("config", "1.yaml");
 
     final AtomicReference<List<SignerSourceResult>> resultsRef =
         new AtomicReference<>(
             List.of(
-                fileResult("key config files", Map.of("/config/1.yaml", configSigner)),
-                fileResult("bls keystores", Map.of("/keystores/2.json", keystoreSigner))));
+                fileResult(
+                    "key config files", Map.of(SignerLoader.fileName(configFile), configSigner))));
     signerProvider =
         new DefaultArtifactSignerProvider(resultsRef::get, Optional.empty(), Optional.empty());
     signerProvider.load().get();
 
-    // key manager API delete followed by an import of the same key
+    // key manager API delete followed by an import of the same key, written to a new file
+    final Path reimportedFile = Path.of("config", "1-reimported.yaml");
     signerProvider.removeSigner(PUBLIC_KEY1).get();
-    signerProvider.addSigner(configSigner).get();
+    signerProvider.addSigner(configSigner, Optional.of(reimportedFile)).get();
 
-    // the key config source no longer lists 1.yaml while the keystores source fails: the
-    // re-imported key is a runtime key, not the deleted 1.yaml signer, so it is kept
+    // the new file fails to load: kept, although the original file is gone
     resultsRef.set(
         List.of(
-            fileResult("key config files", Map.of()),
-            SignerSourceResult.sourceFailure("bls keystores")));
+            fileResult(
+                "key config files", Map.of(), Set.of(SignerLoader.fileName(reimportedFile)))));
     signerProvider.load().get();
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
 
-    assertThat(signerProvider.availableIdentifiers())
-        .containsExactlyInAnyOrder(PUBLIC_KEY1, PUBLIC_KEY2);
+    // the original file failing does not keep the key once the new file is gone
+    resultsRef.set(
+        List.of(
+            fileResult("key config files", Map.of(), Set.of(SignerLoader.fileName(configFile)))));
+    signerProvider.load().get();
+    assertThat(signerProvider.availableIdentifiers()).isEmpty();
   }
 
   @Test

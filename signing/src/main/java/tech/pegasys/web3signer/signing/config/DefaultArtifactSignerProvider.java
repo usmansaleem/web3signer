@@ -314,31 +314,42 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   }
 
   @Override
-  public Future<Void> addSigner(final ArtifactSigner signer) {
+  public Future<Void> addSigner(final ArtifactSigner signer, final Optional<Path> keyConfigFile) {
     return executorService.submit(
         () -> {
           final SignerState currentState = this.state;
+          final String identifier = signer.getIdentifier();
 
           final Map<String, ArtifactSigner> newSigners = new HashMap<>(currentState.signers);
-          final ArtifactSigner existing = newSigners.put(signer.getIdentifier(), signer);
+          final ArtifactSigner existing = newSigners.put(identifier, signer);
           if (existing != null) {
-            LOG.warn("Replaced existing signer for identifier '{}'", signer.getIdentifier());
+            LOG.warn("Replaced existing signer for identifier '{}'", identifier);
           }
 
           final Map<String, Set<ArtifactSigner>> newProxySigners =
               new HashMap<>(currentState.proxySigners);
-          newProxySigners.putIfAbsent(signer.getIdentifier(), Set.of());
+          newProxySigners.putIfAbsent(identifier, Set.of());
+
+          // the signer comes from its key config file only, as if loaded by the key config source;
+          // a signer without a file has no provenance and is removed by the next load
+          final Map<String, Provenance> newProvenance = new HashMap<>(currentState.provenance);
+          keyConfigFile.ifPresentOrElse(
+              file ->
+                  newProvenance.put(
+                      identifier,
+                      new Provenance(SignerLoader.SOURCE_NAME, SignerLoader.fileName(file))),
+              () -> newProvenance.remove(identifier));
 
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
-          // threads. A runtime-added signer has no provenance; drop any stale entry.
+          // threads.
           state =
               new SignerState(
                   Map.copyOf(newSigners),
                   Map.copyOf(newProxySigners),
-                  withoutEntry(currentState.provenance, signer.getIdentifier()),
+                  Map.copyOf(newProvenance),
                   currentState.proxyProvenance);
-          LOG.info("Loaded new signer for identifier '{}'", signer.getIdentifier());
+          LOG.info("Loaded new signer for identifier '{}'", identifier);
           return null;
         });
   }
@@ -622,7 +633,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   /**
    * Keeps previously loaded signers that are missing because their source or file failed to load,
    * so a failure is not reported as a removal (and does not disable them in slashing protection).
-   * Only the failed places are kept. A signer that still loads keeps its previous failed places.
+   * Only the failed places are kept. A signer that still loads keeps its previous failed places. A
+   * signer without provenance (added in memory only) is not kept.
    */
   private static void retainSignersOfFailedSources(
       final SignerState currentState,
@@ -641,21 +653,18 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
         }
         continue;
       }
-      // a runtime-added signer has no provenance: keep it while any source reports errors
       final Provenance failed = failedPlaces(provenance, results);
-      if (provenance == null ? errorCount == 0 : failed == null) {
+      if (failed == null) {
         continue;
       }
       newSigners.put(identifier, previous.getValue());
-      if (failed != null) {
-        newProvenance.put(identifier, failed);
-      }
+      newProvenance.put(identifier, failed);
       retainedCount++;
     }
 
     if (retainedCount > 0) {
       LOG.warn(
-          "Retained {} previously loaded key(s) whose source or file failed to load; a successful load of their source removes them",
+          "Retained {} previously loaded key(s) whose source or file failed to load; they are removed once their source or file loads without them",
           retainedCount);
     }
   }
