@@ -117,10 +117,12 @@ public interface ArtifactSignerProvider extends Closeable {
    *
    * @param proxySigner Instance of ArtifactSigner that represents the proxy signer
    * @param consensusPubKey Public Key of the consensus signer for which proxy signer is being added
+   * @param keystoreFile the proxy keystore file written for the proxy signer. A reload keeps the
+   *     proxy signer while this file fails to load and removes it once the file is gone
    * @return a future that completes when the proxy signer is added
    */
   default Future<Void> addProxySigner(
-      final ArtifactSigner proxySigner, final String consensusPubKey) {
+      final ArtifactSigner proxySigner, final String consensusPubKey, final Path keystoreFile) {
     throw new UnsupportedOperationException("Proxy signers are not supported by this provider");
   }
 

@@ -401,18 +401,21 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    * </ol>
    *
    * <p>Concurrent readers will see either the state before or after the addition, never an
-   * intermediate state.
+   * intermediate state. The proxy signer is attributed to its keystore file, as if loaded from its
+   * proxy directory.
    *
    * @param signerToAdd the proxy signer to add
    * @param consensusPubKey the consensus public key to associate with the proxy signer
+   * @param keystoreFile the proxy keystore file written for the proxy signer
    * @return a {@link Future} that completes when the proxy signer has been added
    */
   @Override
   public Future<Void> addProxySigner(
-      final ArtifactSigner signerToAdd, final String consensusPubKey) {
+      final ArtifactSigner signerToAdd, final String consensusPubKey, final Path keystoreFile) {
     return executorService.submit(
         () -> {
           final SignerState currentState = this.state;
+          final String identifier = signerToAdd.getIdentifier();
 
           final Map<String, Set<ArtifactSigner>> newProxySigners =
               new HashMap<>(currentState.proxySigners);
@@ -422,6 +425,22 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           updatedProxies.add(signerToAdd);
           newProxySigners.put(consensusPubKey, Set.copyOf(updatedProxies));
 
+          // the same names the proxy loader reports: the proxy directory under the configured
+          // keystores path, and the file in it
+          final Path proxyDir =
+              commitBoostKeystoresParameters
+                  .map(KeystoresParameters::getKeystoresPath)
+                  .map(
+                      path ->
+                          path.resolve(consensusPubKey).resolve(signerToAdd.getKeyType().name()))
+                  .orElse(keystoreFile.getParent());
+          final Map<String, Provenance> newProxyProvenance =
+              new HashMap<>(currentState.proxyProvenance);
+          newProxyProvenance.put(
+              identifier,
+              new Provenance(
+                  proxyDir.toString(), proxyDir.resolve(keystoreFile.getFileName()).toString()));
+
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
           // threads
@@ -430,11 +449,11 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
                   currentState.signers,
                   Map.copyOf(newProxySigners),
                   currentState.provenance,
-                  withoutEntry(currentState.proxyProvenance, signerToAdd.getIdentifier()));
+                  Map.copyOf(newProxyProvenance));
 
           LOG.info(
               "Loaded new proxy signer {} for consensus public key '{}'",
-              signerToAdd.getIdentifier(),
+              identifier,
               consensusPubKey);
           return null;
         });
@@ -445,17 +464,6 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
     // Immediate shutdown is appropriate here since if the app is shutting down,
     // there's no need to wait for a potentially long-running load operation
     executorService.shutdownNow();
-  }
-
-  /** Returns the map without the key, copying only if the key is present. */
-  private static Map<String, Provenance> withoutEntry(
-      final Map<String, Provenance> provenance, final String identifier) {
-    if (!provenance.containsKey(identifier)) {
-      return provenance;
-    }
-    final Map<String, Provenance> copy = new HashMap<>(provenance);
-    copy.remove(identifier);
-    return Map.copyOf(copy);
   }
 
   /**
@@ -542,15 +550,12 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           }
           continue;
         }
-        // a runtime-added proxy has no provenance: keep it while its directories report errors
         final Provenance kept = keptPlaces(provenance, dirFailures);
-        if (provenance == null ? dirFailures.isEmpty() : kept == null) {
+        if (kept == null) {
           continue;
         }
         proxies.put(identifier, previous);
-        if (kept != null) {
-          newProxyProvenance.merge(identifier, kept, Provenance::merge);
-        }
+        newProxyProvenance.merge(identifier, kept, Provenance::merge);
         retainedCount++;
       }
 

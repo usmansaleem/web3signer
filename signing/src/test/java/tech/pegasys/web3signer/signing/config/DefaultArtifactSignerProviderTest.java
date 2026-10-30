@@ -25,7 +25,9 @@ import tech.pegasys.web3signer.KeystoreUtil;
 import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
+import tech.pegasys.web3signer.signing.BlsArtifactSigner;
 import tech.pegasys.web3signer.signing.KeyType;
+import tech.pegasys.web3signer.signing.config.metadata.SignerOrigin;
 import tech.pegasys.web3signer.signing.secp256k1.EthPublicKeyUtils;
 
 import java.io.IOException;
@@ -44,6 +46,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -905,6 +908,48 @@ class DefaultArtifactSignerProviderTest {
             failedProxy,
             blsProxies.get(2).getPublicKey().toString(),
             blsProxies.get(3).getPublicKey().toString());
+  }
+
+  @Test
+  void generatedProxySignerIsKeptOnlyWhileItsOwnKeystoreFileFails() throws Exception {
+    final KeystoresParameters commitBoostParameters =
+        new TestCommitBoostParameters(commitBoostKeystoresPath, commitBoostPasswordDir);
+    randomSecpV3Keystores(PUBLIC_KEY1);
+    final Path secpProxyDir = commitBoostKeystoresPath.resolve(PUBLIC_KEY1).resolve("SECP256K1");
+    final Path blsProxyDir =
+        Files.createDirectories(commitBoostKeystoresPath.resolve(PUBLIC_KEY1).resolve("BLS"));
+
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            () -> List.of(sourceResult("key config files", mockSigner(PUBLIC_KEY1))),
+            Optional.empty(),
+            Optional.of(commitBoostParameters));
+    signerProvider.load().get();
+
+    // commit boost generate: the keystore file is written, then the proxy is added
+    final BLSKeyPair generated = BLSTestUtil.randomKeyPair(10);
+    final String generatedProxy = generated.getPublicKey().toString();
+    final Path generatedFile = KeystoreUtil.createKeystoreFile(generated, blsProxyDir, "password");
+    signerProvider
+        .addProxySigner(
+            new BlsArtifactSigner(generated, SignerOrigin.FILE_KEYSTORE),
+            PUBLIC_KEY1,
+            generatedFile)
+        .get();
+
+    // its keystore file fails: kept
+    Files.writeString(generatedFile, "not a keystore");
+    signerProvider.load().get();
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1).get(KeyType.BLS))
+        .containsExactly(generatedProxy);
+
+    // its keystore file is deleted while an unrelated SECP proxy file fails: removed
+    Files.delete(generatedFile);
+    try (final Stream<Path> secpFiles = Files.list(secpProxyDir)) {
+      Files.writeString(secpFiles.findFirst().orElseThrow(), "not a keystore");
+    }
+    signerProvider.load().get();
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1)).doesNotContainKey(KeyType.BLS);
   }
 
   @Test
