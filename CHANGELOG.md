@@ -19,6 +19,7 @@
 - Gradle wrapper upgraded to 9.8.2. [#1287][PR_1287]
 - AWS tests run in CI against [MiniStack](https://github.com/ministackorg/ministack), which replaces LocalStack. [#1276][PR_1276]
 - GCP Secret Manager acceptance tests run again in CI, against a Testcontainers instance of the offline [gcp-secret-manager-emulator](https://github.com/blackwell-systems/gcp-secret-manager-emulator) instead of real Google Cloud. [#1275][PR_1275]
+- The default Docker image copies its JRE from the digest-pinned `eclipse-temurin:25-jre` image (Temurin 25.0.5+8) instead of downloading the Adoptium release tarball, now that the official image carries the eMudhra CA fix. [#1249][PR_1249]
 
 <!-- Link references for the entries above; not changelog entries. -->
 [PR_1277]: https://github.com/Consensys-Incorporated/web3signer/pull/1277

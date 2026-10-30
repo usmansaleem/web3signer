@@ -13,7 +13,7 @@ ARG DIST_SOURCE=${DIST_FROM_TAR:-gradle}
 # The source tree is bind-mounted (not copied) so it never lands in a layer; .git
 # must be in the build context for correct version information, and the version
 # calculation runs the git CLI, which the JDK image does not ship.
-FROM --platform=$BUILDPLATFORM eclipse-temurin:25.0.4_7-jdk@sha256:97014c4b396021f9ddb7d592a7dbedb0c4e4215c29e03dc01c393558aefb71c2 AS dist-gradle
+FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jdk@sha256:83f4a7fc27df94dcc7b8de04d14cbbba8da14406f921e966969c3b09000aa507 AS dist-gradle
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
