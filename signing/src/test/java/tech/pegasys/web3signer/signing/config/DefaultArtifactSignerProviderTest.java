@@ -662,18 +662,80 @@ class DefaultArtifactSignerProviderTest {
   }
 
   @Test
-  void signerAddedInMemoryOnlyIsRemovedByNextLoadEvenIfSourcesFail() throws Exception {
+  void signerImportedInMemoryIsKeptByLoadsUntilRemoved() throws Exception {
+    final List<Set<String>> removedCaptures = new ArrayList<>();
+    final BiConsumer<Set<String>, Set<String>> callback =
+        (added, removed) -> removedCaptures.add(Set.copyOf(removed));
     final AtomicReference<List<SignerSourceResult>> resultsRef =
         new AtomicReference<>(
             List.of(
                 fileResult("key config files", Map.of("/config/1.yaml", mockSigner(PUBLIC_KEY1)))));
     signerProvider =
-        new DefaultArtifactSignerProvider(resultsRef::get, Optional.empty(), Optional.empty());
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.of(callback), Optional.empty());
     signerProvider.load().get();
 
     // key manager API import without keystore storage: no file, not part of any source
     signerProvider.addSigner(mockSigner(PUBLIC_KEY2), Optional.empty()).get();
+
+    // neither a clean load nor a failing one removes or disables it
+    signerProvider.load().get();
     resultsRef.set(List.of(SignerSourceResult.sourceFailure("key config files")));
+    signerProvider.load().get();
+    assertThat(signerProvider.availableIdentifiers())
+        .containsExactlyInAnyOrder(PUBLIC_KEY1, PUBLIC_KEY2);
+    assertThat(removedCaptures.subList(1, 3)).allSatisfy(removed -> assertThat(removed).isEmpty());
+
+    // key manager API delete removes it; later loads do not bring it back
+    signerProvider.removeSigner(PUBLIC_KEY2).get();
+    signerProvider.load().get();
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
+  }
+
+  @Test
+  void signerImportedInMemoryIsKeptAfterAFileDefiningItIsDeleted() throws Exception {
+    final ArtifactSigner signer = mockSigner(PUBLIC_KEY1);
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(List.of(fileResult("key config files", Map.of())));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.empty(), Optional.empty());
+    signerProvider.load().get();
+    signerProvider.addSigner(signer, Optional.empty()).get();
+
+    // an operator later adds a file for the same key, then deletes it
+    resultsRef.set(List.of(fileResult("key config files", Map.of("/config/1.yaml", signer))));
+    signerProvider.load().get();
+    resultsRef.set(List.of(fileResult("key config files", Map.of())));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
+  }
+
+  @Test
+  void unprocessedFileOfKeyStillLoadedElsewhereKeepsKeyAfterOtherFileIsDeleted() throws Exception {
+    final ArtifactSigner signer = mockSigner(PUBLIC_KEY1);
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(
+                fileResult(
+                    "key config files",
+                    Map.of("/config/a.yaml", signer, "/config/b.yaml", signer))));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.empty(), Optional.empty());
+    signerProvider.load().get();
+
+    // b.yaml is not processed (loader stopping): reported in failedFiles, not as an error
+    resultsRef.set(
+        List.of(
+            new SignerSourceResult(
+                "key config files",
+                List.of(new SignerSourceResult.LoadedSigner(signer, Optional.of("/config/a.yaml"))),
+                Set.of("/config/b.yaml"),
+                0,
+                false)));
+    assertThat(signerProvider.load().get()).isZero();
+
+    // a.yaml is deleted while b.yaml fails: the key is kept
+    resultsRef.set(List.of(fileResult("key config files", Map.of(), Set.of("/config/b.yaml"))));
     signerProvider.load().get();
 
     assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);

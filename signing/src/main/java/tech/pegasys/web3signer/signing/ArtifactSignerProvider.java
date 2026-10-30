@@ -99,7 +99,7 @@ public interface ArtifactSignerProvider extends Closeable {
    * @param signer the signer to add
    * @param keyConfigFile the key config file written for the signer, empty if it is kept in memory
    *     only. A reload keeps the signer while this file fails to load and removes it once the file
-   *     is gone; a signer without a file is removed by the next reload
+   *     is gone; a reload never removes a signer without a file, only {@link #removeSigner} does
    * @return a future that completes when the signer is added
    */
   Future<Void> addSigner(final ArtifactSigner signer, final Optional<Path> keyConfigFile);

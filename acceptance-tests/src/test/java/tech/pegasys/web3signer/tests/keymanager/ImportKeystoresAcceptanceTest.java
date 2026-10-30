@@ -23,6 +23,7 @@ import tech.pegasys.teku.infrastructure.unsigned.UInt64;
 import tech.pegasys.web3signer.core.service.http.SigningObjectMapperFactory;
 import tech.pegasys.web3signer.core.service.http.handlers.keymanager.imports.ImportKeystoresRequestBody;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.Eth2SigningRequestBody;
+import tech.pegasys.web3signer.dsl.signer.SignerConfigurationBuilder;
 import tech.pegasys.web3signer.signing.KeyType;
 
 import java.io.IOException;
@@ -32,6 +33,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.restassured.http.ContentType;
@@ -240,6 +242,53 @@ public class ImportKeystoresAcceptanceTest extends KeyManagerTestBase {
                   .then()
                   .statusCode(200)
                   .body("status", equalTo("completed_with_errors"));
+            });
+  }
+
+  @Test
+  public void reloadKeepsKeyImportedWithoutKeystoreStorageUntilDeleted()
+      throws IOException, URISyntaxException {
+    startSigner(
+        new SignerConfigurationBuilder()
+            .withKeyStoreDirectory(testDirectory)
+            .withNetwork("minimal")
+            .withMode("eth2")
+            .withAltairForkEpoch(MINIMAL_ALTAIR_FORK)
+            .withSlashingEnabled(true)
+            .withSlashingProtectionDbUsername(DB_USERNAME)
+            .withSlashingProtectionDbPassword(DB_PASSWORD)
+            .withKeyManagerApiEnabled(true)
+            .withKeyManagerSkipKeystoreStorage(true)
+            .build());
+    callImportKeystores(composeRequestBody())
+        .then()
+        .statusCode(200)
+        .body("data.status", hasItem("imported"));
+    try (final Stream<Path> files = Files.list(testDirectory)) {
+      assertThat(files).isEmpty();
+    }
+
+    // a reload neither removes the in-memory key nor disables it for signing
+    reloadAndAwaitStatus("completed");
+    validateApiResponse(callListKeys(), "data.validating_pubkey", hasItem(PUBLIC_KEY));
+    signer
+        .eth2Sign(PUBLIC_KEY, createAttestationRequest(7, 8, UInt64.ZERO))
+        .then()
+        .assertThat()
+        .statusCode(200);
+
+    // deleted through the API: a later reload does not bring it back
+    callDeleteKeystores(new JsonObject().put("pubkeys", new JsonArray().add(PUBLIC_KEY)).toString())
+        .then()
+        .statusCode(200);
+    signer.callReload().then().statusCode(202);
+    Awaitility.await()
+        .atMost(10, TimeUnit.SECONDS)
+        .pollInterval(500, TimeUnit.MILLISECONDS)
+        .untilAsserted(
+            () -> {
+              signer.getReloadStatus().then().statusCode(200).body("status", equalTo("completed"));
+              validateApiResponse(callListKeys(), "data.validating_pubkey", empty());
             });
   }
 

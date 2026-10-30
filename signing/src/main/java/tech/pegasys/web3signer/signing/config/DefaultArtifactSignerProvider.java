@@ -42,6 +42,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Suppliers;
+import com.google.common.collect.Sets;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -93,13 +94,19 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       Map<String, Provenance> provenance,
       Map<String, Provenance> proxyProvenance) {}
 
+  /** Source of keys imported without a key config file; no load removes them. */
+  private static final String IN_MEMORY_SOURCE = "key manager API (in memory)";
+
+  private static final Provenance IN_MEMORY = new Provenance(IN_MEMORY_SOURCE, null);
+
   /**
    * Where a signer was loaded from. A key defined by several files has one entry per file, chained
-   * through {@code next}. Entries of keys removed via {@link #removeSigner} stay until the next
+   * through {@code next}. A key imported without a file has the single place {@link #IN_MEMORY},
+   * which every load keeps. Entries of keys removed via {@link #removeSigner} stay until the next
    * {@link #load()}; retention only looks at loaded keys.
    *
    * @param source loader source; the proxy keystore directory for proxy signers
-   * @param file source file, {@code null} for vaults
+   * @param file source file, {@code null} for vaults and in-memory keys
    * @param next another file the same key was loaded from, or {@code null}
    */
   private record Provenance(String source, String file, Provenance next) {
@@ -217,7 +224,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
           }
 
           retainSignersOfFailedSources(
-              currentState, results, errorCount, newSigners, newProvenance);
+              currentState, Failures.of(results), newSigners, newProvenance);
 
           // Build new proxy signers map
           final Map<String, Set<ArtifactSigner>> newProxySigners = new HashMap<>();
@@ -330,15 +337,15 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
               new HashMap<>(currentState.proxySigners);
           newProxySigners.putIfAbsent(identifier, Set.of());
 
-          // the signer comes from its key config file only, as if loaded by the key config source;
-          // a signer without a file has no provenance and is removed by the next load
+          // the signer comes from its key config file, as if loaded by the key config source, or
+          // from memory only, which no load removes
           final Map<String, Provenance> newProvenance = new HashMap<>(currentState.provenance);
-          keyConfigFile.ifPresentOrElse(
-              file ->
-                  newProvenance.put(
-                      identifier,
-                      new Provenance(SignerLoader.SOURCE_NAME, SignerLoader.fileName(file))),
-              () -> newProvenance.remove(identifier));
+          newProvenance.put(
+              identifier,
+              keyConfigFile
+                  .map(
+                      file -> new Provenance(SignerLoader.SOURCE_NAME, SignerLoader.fileName(file)))
+                  .orElse(IN_MEMORY));
 
           // Atomically publish new immutable state - Map.copyOf() ensures readers never see
           // intermediate modifications, volatile write guarantees immediate visibility across
@@ -523,26 +530,26 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
         }
       }
 
-      final long dirErrorCount =
-          dirResults.stream().mapToLong(SignerSourceResult::errorCount).sum();
+      final Failures dirFailures = Failures.of(dirResults);
       for (final ArtifactSigner previous :
           currentState.proxySigners.getOrDefault(consensusPubKey, Set.of())) {
         final String identifier = previous.getIdentifier();
         final Provenance provenance = currentState.proxyProvenance.get(identifier);
         if (proxies.containsKey(identifier)) {
-          if (dirErrorCount > 0) {
+          if (!dirFailures.isEmpty()) {
             newProxyProvenance.computeIfPresent(
-                identifier, (id, places) -> withFailedPlaces(places, provenance, dirResults));
+                identifier, (id, places) -> withKeptPlaces(places, provenance, dirFailures));
           }
           continue;
         }
-        final Provenance failed = failedPlaces(provenance, dirResults);
-        if (provenance == null ? dirErrorCount == 0 : failed == null) {
+        // a runtime-added proxy has no provenance: keep it while its directories report errors
+        final Provenance kept = keptPlaces(provenance, dirFailures);
+        if (provenance == null ? dirFailures.isEmpty() : kept == null) {
           continue;
         }
         proxies.put(identifier, previous);
-        if (failed != null) {
-          newProxyProvenance.merge(identifier, failed, Provenance::merge);
+        if (kept != null) {
+          newProxyProvenance.merge(identifier, kept, Provenance::merge);
         }
         retainedCount++;
       }
@@ -633,13 +640,12 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   /**
    * Keeps previously loaded signers that are missing because their source or file failed to load,
    * so a failure is not reported as a removal (and does not disable them in slashing protection).
-   * Only the failed places are kept. A signer that still loads keeps its previous failed places. A
-   * signer without provenance (added in memory only) is not kept.
+   * Only the failed places are kept. A signer that still loads keeps its previous failed places.
+   * Signers imported in memory only are always kept.
    */
   private static void retainSignersOfFailedSources(
       final SignerState currentState,
-      final List<SignerSourceResult> results,
-      final long errorCount,
+      final Failures failures,
       final Map<String, ArtifactSigner> newSigners,
       final Map<String, Provenance> newProvenance) {
     int retainedCount = 0;
@@ -647,19 +653,21 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       final String identifier = previous.getKey();
       final Provenance provenance = currentState.provenance.get(identifier);
       if (newSigners.containsKey(identifier)) {
-        if (errorCount > 0) {
+        if (provenance != null && (!failures.isEmpty() || provenance.lists(IN_MEMORY))) {
           newProvenance.computeIfPresent(
-              identifier, (id, places) -> withFailedPlaces(places, provenance, results));
+              identifier, (id, places) -> withKeptPlaces(places, provenance, failures));
         }
         continue;
       }
-      final Provenance failed = failedPlaces(provenance, results);
-      if (failed == null) {
+      final Provenance kept = keptPlaces(provenance, failures);
+      if (kept == null) {
         continue;
       }
       newSigners.put(identifier, previous.getValue());
-      newProvenance.put(identifier, failed);
-      retainedCount++;
+      newProvenance.put(identifier, kept);
+      if (kept.next() != null || !kept.source().equals(IN_MEMORY_SOURCE)) {
+        retainedCount++;
+      }
     }
 
     if (retainedCount > 0) {
@@ -669,38 +677,73 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
     }
   }
 
-  /** The places that failed in this load, or {@code null} if none did. */
-  private static Provenance failedPlaces(
-      final Provenance places, final List<SignerSourceResult> results) {
+  /**
+   * The places to keep in this load: those that failed, and the in-memory place. {@code null} if
+   * none; {@code places} itself if it is a single kept place.
+   */
+  private static Provenance keptPlaces(final Provenance places, final Failures failures) {
     if (places == null) {
       return null;
     }
     if (places.next() == null) {
-      return failedToLoadFrom(places, results) ? places : null;
+      return isKept(places, failures) ? places : null;
     }
-    Provenance failed = null;
+    if (failures.isEmpty() && !places.lists(IN_MEMORY)) {
+      return null;
+    }
+    Provenance kept = null;
     for (Provenance place = places; place != null; place = place.next()) {
-      if (failedToLoadFrom(place, results)) {
-        failed = new Provenance(place.source(), place.file(), failed);
+      if (isKept(place, failures)) {
+        kept = new Provenance(place.source(), place.file(), kept);
       }
     }
-    return failed;
+    return kept;
   }
 
-  /** Adds a loaded key's previous places that failed in this load. */
-  private static Provenance withFailedPlaces(
-      final Provenance places, final Provenance previous, final List<SignerSourceResult> results) {
-    final Provenance failed = failedPlaces(previous, results);
-    return failed == null ? places : Provenance.merge(places, failed);
+  private static boolean isKept(final Provenance place, final Failures failures) {
+    return place.source().equals(IN_MEMORY_SOURCE) || failures.failed(place);
   }
 
-  private static boolean failedToLoadFrom(
-      final Provenance place, final List<SignerSourceResult> results) {
-    return results.stream()
-        .filter(result -> result.source().equals(place.source()))
-        .anyMatch(
-            result ->
-                result.sourceFailed()
-                    || (place.file() != null && result.failedFiles().contains(place.file())));
+  /** Adds a loaded key's previous places that are kept in this load. */
+  private static Provenance withKeptPlaces(
+      final Provenance places, final Provenance previous, final Failures failures) {
+    final Provenance kept = keptPlaces(previous, failures);
+    return kept == null ? places : Provenance.merge(places, kept);
+  }
+
+  /**
+   * What failed in one load: whole sources, and individual files by source. Built once per load, so
+   * checking a place is a hash lookup instead of a scan of the results.
+   */
+  private record Failures(Set<String> failedSources, Map<String, Set<String>> failedFiles) {
+    private static final Failures NONE = new Failures(Set.of(), Map.of());
+
+    private static Failures of(final List<SignerSourceResult> results) {
+      final Set<String> failedSources = new HashSet<>();
+      final Map<String, Set<String>> failedFiles = new HashMap<>();
+      for (final SignerSourceResult result : results) {
+        if (result.sourceFailed()) {
+          failedSources.add(result.source());
+        } else if (!result.failedFiles().isEmpty()) {
+          failedFiles.merge(result.source(), result.failedFiles(), Sets::union);
+        }
+      }
+      if (failedSources.isEmpty() && failedFiles.isEmpty()) {
+        return NONE;
+      }
+      return new Failures(failedSources, failedFiles);
+    }
+
+    private boolean isEmpty() {
+      return failedSources.isEmpty() && failedFiles.isEmpty();
+    }
+
+    private boolean failed(final Provenance place) {
+      if (failedSources.contains(place.source())) {
+        return true;
+      }
+      final Set<String> files = failedFiles.get(place.source());
+      return files != null && place.file() != null && files.contains(place.file());
+    }
   }
 }

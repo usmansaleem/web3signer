@@ -24,8 +24,8 @@ import org.apache.tuweni.bytes.Bytes;
 ///
 /// When a `KeystoreFileManager` is supplied, validators are persisted to disk before being
 /// activated in memory, so they survive a restart. When no file manager is supplied (i.e.
-/// `skipKeystoreStorage` is enabled), validators exist only in memory and are lost when Web3Signer
-/// stops or reloads its signers.
+/// `skipKeystoreStorage` is enabled), validators exist only in memory: reloads keep them, and they
+/// are lost when Web3Signer stops.
 ///
 /// In both modes the in-memory state is always the source of truth for active signing: additions
 /// register the signer in memory _after_ a successful file write (if applicable), and deletions
