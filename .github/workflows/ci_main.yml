@@ -352,8 +352,13 @@ jobs:
           DIGEST=$(docker buildx imagetools inspect "$PRIMARY_TAG" --format '{{json .Manifest.Digest}}' | jq -r .)
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
+      # cosign-installer v4.1.2 defaults to cosign v3.0.6, whose sigstore-go (v1.1.4) fails on a Rekor
+      # 409 (entry already logged, e.g. a POST retried after a slow response). cosign v3.1.4
+      # (sigstore-go v1.3.0) fetches the existing entry instead.
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
 
       - name: Sign manifest with keyless cosign (Sigstore OIDC)
         env:
