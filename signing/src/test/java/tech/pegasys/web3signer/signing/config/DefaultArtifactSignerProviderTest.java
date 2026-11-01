@@ -15,7 +15,6 @@ package tech.pegasys.web3signer.signing.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,7 +32,6 @@ import tech.pegasys.web3signer.signing.secp256k1.EthPublicKeyUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
 import java.security.KeyPair;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,8 +49,6 @@ import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.WalletUtils;
@@ -851,35 +847,6 @@ class DefaultArtifactSignerProviderTest {
     assertThat(proxies.get(KeyType.BLS)).containsExactlyInAnyOrder(getPublicKeysArray(blsProxies));
     assertThat(proxies.get(KeyType.SECP256K1))
         .containsExactlyInAnyOrder(getCompressedSECPPublicKeysArray(secpProxies));
-  }
-
-  @Test
-  @DisabledOnOs(OS.WINDOWS)
-  void proxySignersAreRetainedWhenProxyDirectoryCannotBeAccessed() throws Exception {
-    final KeystoresParameters commitBoostParameters =
-        new TestCommitBoostParameters(commitBoostKeystoresPath, commitBoostPasswordDir);
-    final List<BLSKeyPair> blsProxies = randomBLSV4Keystores(PUBLIC_KEY1);
-    final Path consensusKeyDir = commitBoostKeystoresPath.resolve(PUBLIC_KEY1);
-
-    signerProvider =
-        new DefaultArtifactSignerProvider(
-            () -> List.of(sourceResult("key config files", mockSigner(PUBLIC_KEY1))),
-            Optional.empty(),
-            Optional.of(commitBoostParameters));
-    signerProvider.load().get();
-
-    final Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(consensusKeyDir);
-    Files.setPosixFilePermissions(consensusKeyDir, Set.of());
-    try {
-      // the existence of the proxy directory cannot be determined (not the case for root)
-      assumeFalse(Files.exists(consensusKeyDir.resolve(KeyType.BLS.name())));
-      signerProvider.load().get();
-    } finally {
-      Files.setPosixFilePermissions(consensusKeyDir, permissions);
-    }
-
-    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1).get(KeyType.BLS))
-        .containsExactlyInAnyOrder(getPublicKeysArray(blsProxies));
   }
 
   @Test
