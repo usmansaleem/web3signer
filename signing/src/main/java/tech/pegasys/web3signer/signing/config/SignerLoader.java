@@ -216,15 +216,17 @@ public class SignerLoader implements Closeable {
           LOG.trace("Added {} signers from {}", signers.size(), pathStr);
         });
 
-    // Update the volatile reference with the new immutable map
-    cachedArtifactSigners = Map.copyOf(newCache);
+    // Update the volatile reference with the new immutable map. The result is built from the local
+    // copy: close() may clear the field concurrently, which must not look like every file deleted.
+    final Map<String, CachedSignerData> loadedCache = Map.copyOf(newCache);
+    cachedArtifactSigners = loadedCache;
 
     // one entry per file, so that a key defined by several files is kept while any of them fails;
     // unprocessed files are kept like failed ones but are not errors
     final SignerSourceResult result =
         new SignerSourceResult(
             SOURCE_NAME,
-            cachedArtifactSigners.values().stream()
+            loadedCache.values().stream()
                 .flatMap(
                     cached ->
                         cached.signers().stream()
@@ -238,7 +240,7 @@ public class SignerLoader implements Closeable {
     LOG.info(
         "Total Artifact Signers loaded via configuration files: {}\nTotal Paths cached: {}, Error count: {}, Not processed: {}\nTime Taken: {}.",
         result.signers().size(),
-        cachedArtifactSigners.size(),
+        loadedCache.size(),
         loadResult.errorCount(),
         loadResult.unprocessedPaths().size(),
         calculateTimeTaken(loadStartTime).orElse("unknown duration"));
