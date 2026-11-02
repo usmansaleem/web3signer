@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import com.google.common.annotations.VisibleForTesting;
+
 /**
  * Signers loaded from one source (key config directory, keystore directory or vault), with the
  * files that failed and whether the source failed as a whole. {@link DefaultArtifactSignerProvider}
@@ -65,6 +67,7 @@ public record SignerSourceResult(
         results.getErrorCount() > 0);
   }
 
+  @VisibleForTesting
   public List<ArtifactSigner> artifactSigners() {
     return signers.stream().map(LoadedSigner::signer).toList();
   }
