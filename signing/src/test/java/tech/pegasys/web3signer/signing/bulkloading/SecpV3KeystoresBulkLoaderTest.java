@@ -13,17 +13,22 @@
 package tech.pegasys.web3signer.signing.bulkloading;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import tech.pegasys.web3signer.signing.config.SignerSourceResult;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.web3j.crypto.WalletUtils;
 
@@ -235,6 +240,30 @@ public class SecpV3KeystoresBulkLoaderTest {
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordDir);
     assertThat(recovered.artifactSigners()).hasSize(2);
     assertThat(recovered.errorCount()).isZero();
+  }
+
+  // POSIX only: an existing password directory that cannot be listed needs its permissions
+  // removed. Windows file systems have no POSIX permission view (setPosixFilePermissions throws
+  // UnsupportedOperationException), and root bypasses the permission check, hence the assumption.
+  @Test
+  @DisabledOnOs(OS.WINDOWS)
+  void unreadablePasswordDirectoryReportsSourceFailure() throws IOException {
+    final Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(passwordDir);
+    Files.setPosixFilePermissions(passwordDir, Set.of());
+    try {
+      assumeFalse(Files.isReadable(passwordDir));
+      // a keystore deleted while the password directory is unreadable must not look deleted
+      Files.delete(keystoreFiles().get(0));
+
+      final SignerSourceResult errored =
+          SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordDir);
+      assertThat(errored.artifactSigners()).isEmpty();
+      assertThat(errored.failedFiles()).isEmpty();
+      assertThat(errored.errorCount()).isEqualTo(1);
+      assertThat(errored.sourceFailed()).isTrue();
+    } finally {
+      Files.setPosixFilePermissions(passwordDir, permissions);
+    }
   }
 
   private List<Path> keystoreFiles() throws IOException {

@@ -58,7 +58,12 @@ public class SecpV3KeystoresBulkLoader {
 
     final PasswordReader passwordReader;
     if (Files.isDirectory(pwrdFileOrDirPath)) {
-      passwordReader = passwordFile -> Files.readString(pwrdFileOrDirPath.resolve(passwordFile));
+      try {
+        passwordReader = PasswordReader.fromDirectory(pwrdFileOrDirPath);
+      } catch (final IOException e) {
+        LOG.error("Unable to read password directory.", e);
+        return SignerSourceResult.sourceFailure(SOURCE_NAME);
+      }
     } else if (Files.isRegularFile(pwrdFileOrDirPath)) {
       try {
         final String password = Files.readString(pwrdFileOrDirPath);

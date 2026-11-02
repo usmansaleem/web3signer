@@ -300,6 +300,46 @@ class BlsKeystoreBulkLoaderTest {
     assertThat(errored.sourceFailed()).isTrue();
   }
 
+  @Test
+  void missingPasswordDirectoryReportsSourceFailure(final @TempDir Path tempDir)
+      throws IOException {
+    final Path keystoreDir = Files.createDirectory(tempDir.resolve("keystores"));
+    final Path passwordDir = Files.createDirectory(tempDir.resolve("passwords"));
+    KeystoreUtil.createKeystore(KEY_PAIR_1, keystoreDir, passwordDir, KEYSTORE_PASSWORD_1);
+    KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
+    assertThat(
+            BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir)
+                .artifactSigners())
+        .hasSize(2);
+
+    // a keystore deleted while the password directory is gone must not look deleted on its own
+    FileUtils.deleteDirectory(passwordDir.toFile());
+    Files.delete(keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".json"));
+
+    final SignerSourceResult errored =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    assertThat(errored.artifactSigners()).isEmpty();
+    assertThat(errored.failedFiles()).isEmpty();
+    assertThat(errored.errorCount()).isEqualTo(1);
+    assertThat(errored.sourceFailed()).isTrue();
+  }
+
+  @Test
+  void passwordDirectoryThatIsAFileReportsSourceFailure(final @TempDir Path tempDir)
+      throws IOException {
+    final Path keystoreDir = Files.createDirectory(tempDir.resolve("keystores"));
+    KeystoreUtil.createKeystoreFile(KEY_PAIR_1, keystoreDir, KEYSTORE_PASSWORD_1);
+    final Path passwordFile =
+        Files.writeString(tempDir.resolve("password.txt"), KEYSTORE_PASSWORD_1);
+
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordFile);
+    assertThat(result.artifactSigners()).isEmpty();
+    assertThat(result.failedFiles()).isEmpty();
+    assertThat(result.errorCount()).isEqualTo(1);
+    assertThat(result.sourceFailed()).isTrue();
+  }
+
   private void assertThatSignerHasPublicKey(
       final Collection<ArtifactSigner> signers, final BLSKeyPair keyPair0) {
     assertThat(signers).anyMatch(s -> s.getIdentifier().equals(keyPair0.getPublicKey().toString()));

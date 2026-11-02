@@ -44,6 +44,14 @@ public class BlsKeystoreBulkLoader {
 
   public static SignerSourceResult loadKeystoresUsingPasswordDir(
       final Path keystoresDirectory, final Path passwordsDirectory) {
+    final PasswordReader passwordReader;
+    try {
+      passwordReader = PasswordReader.fromDirectory(passwordsDirectory);
+    } catch (final IOException e) {
+      LOG.error("Unable to read keystore password directory", e);
+      return SignerSourceResult.sourceFailure(SOURCE_NAME);
+    }
+
     final List<Path> keystoreFiles;
     try {
       keystoreFiles = JsonFilesUtil.loadJsonExtPaths(keystoresDirectory);
@@ -53,12 +61,7 @@ public class BlsKeystoreBulkLoader {
     }
 
     return loadKeystores(
-        keystoreFiles,
-        keystoreFile ->
-            createSignerForKeystore(
-                keystoreFile,
-                keystorePassword ->
-                    Files.readString(passwordsDirectory.resolve(keystorePassword))));
+        keystoreFiles, keystoreFile -> createSignerForKeystore(keystoreFile, passwordReader));
   }
 
   public static SignerSourceResult loadKeystoresUsingPasswordFile(
