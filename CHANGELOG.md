@@ -12,12 +12,15 @@ The following options are deprecated, log a warning when used, and will be remov
 
 ### Features Added
 - TLS trust can be configured with a truststore instead of certificate fingerprint files: PKCS#12 (preferred), JKS or PEM certificates, detected from the file content. A password file is required for PKCS#12 and JKS, and not used for PEM. The truststore holds the trusted certificates or their issuing CAs and, like `javax.net.ssl.trustStore`, replaces the JVM's default CAs [#1282][PR_1282]:
-  - Inbound client authentication: `--tls-truststore-file` and `--tls-truststore-password-file` (cannot be combined with `--tls-allow-ca-clients`).
-  - Eth1 downstream web3 provider: `--downstream-http-tls-truststore-file` and `--downstream-http-tls-truststore-password-file`.
-  - Hashicorp Vault signing metadata: `tlsTruststoreFile` and `tlsTruststorePasswordFile`; relative paths resolve against the key config directory.
+  - Inbound client authentication: `--tls-truststore-file` and `--tls-truststore-password-file` (requires `--tls-keystore-file`; cannot be combined with `--tls-allow-ca-clients`).
+  - Eth1 downstream web3 provider: `--downstream-http-tls-truststore-file` and `--downstream-http-tls-truststore-password-file` (requires `--downstream-http-tls-enabled`).
+  - Hashicorp Vault signing metadata: `tlsTruststoreFile` and `tlsTruststorePasswordFile` (requires `tlsEnabled: true`); relative paths resolve against the key config directory.
+  - Certificate revocation (CRLs) is not checked yet; support is tracked in [#1294](https://github.com/Consensys-Incorporated/web3signer/issues/1294).
 - Docker images can now be built without a local Java install: when the `TAR_FILE` build argument is omitted, `docker/Dockerfile` and `docker/Dockerfile.distroless` build the distribution from source inside Docker. Building from a pre-built `TAR_FILE` remains the recommended path. See `docker/README.md`. [#1249][PR_1249]
 
 ### Bugs Fixed
+- Hashicorp key files pointing at the same Vault no longer share one HTTP client regardless of their TLS settings; the first key file loaded could otherwise decide the trust used for all of them. [#1282][PR_1282]
+- The deprecated Hashicorp `tlsKnownServersPath` is loaded relative to the key config directory, as its existence check already was, instead of the working directory. [#1282][PR_1282]
 
 ### Breaking Changes
 

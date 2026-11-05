@@ -204,6 +204,20 @@ class CommandlineParserEth1Test {
             "Error parsing parameters: --downstream-http-tls-truststore-password-file requires --downstream-http-tls-truststore-file");
   }
 
+  @Test
+  void downstreamTrustStoreWithoutTlsEnabledCausesParsingError() {
+    final String cmdline =
+        validBaseCommandOptions()
+            + " eth1 --chain-id 1337"
+            + " --downstream-http-tls-truststore-file=./truststore.pem";
+    final int retCode = parser.parseCommandLine(cmdline.split("\\s+"));
+
+    assertThat(retCode).isNotZero();
+    assertThat(commandError.toString())
+        .contains(
+            "Error parsing parameters: --downstream-http-tls-truststore-file requires --downstream-http-tls-enabled");
+  }
+
   @ParameterizedTest
   @CsvSource(
       delimiter = '|',

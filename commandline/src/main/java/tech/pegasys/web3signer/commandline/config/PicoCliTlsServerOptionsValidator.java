@@ -39,8 +39,25 @@ public class PicoCliTlsServerOptionsValidator {
     final File keyStoreFile = picoCliTlsServerOptions.getKeyStoreFile();
     final File keyStorePasswordFile = picoCliTlsServerOptions.getKeyStorePasswordFile();
 
-    // no need to further validate if keystore file/password are not specified
+    final PicoCliClientAuthConstraints clientAuthConstraints =
+        picoCliTlsServerOptions.clientAuthConstraints;
+    final boolean trustStoreSpecified = clientAuthConstraints.getTrustStoreOptions().isPresent();
+    final boolean knownClientsFileSpecified =
+        clientAuthConstraints.getKnownClientsFile().isPresent();
+    final boolean caClientsAllowed = clientAuthConstraints.isCaAuthorizedClientAllowed();
+
+    // without a keystore TLS is disabled, so client authentication options would be ignored
     if (keyStoreFile == null && keyStorePasswordFile == null) {
+      if (trustStoreSpecified || clientAuthConstraints.getTrustStorePasswordFile() != null) {
+        throw new CommandLine.ParameterException(
+            spec.commandLine(),
+            "--tls-truststore-file and --tls-truststore-password-file require --tls-keystore-file and --tls-keystore-password-file");
+      }
+      if (knownClientsFileSpecified || caClientsAllowed) {
+        LOG.warn(
+            "--tls-known-clients-file and --tls-allow-ca-clients are ignored because TLS is "
+                + "disabled; set --tls-keystore-file and --tls-keystore-password-file to enable it.");
+      }
       return;
     }
 
@@ -50,13 +67,6 @@ public class PicoCliTlsServerOptionsValidator {
           spec.commandLine(),
           "--tls-keystore-file must be specified together with --tls-keystore-password-file");
     }
-
-    final PicoCliClientAuthConstraints clientAuthConstraints =
-        picoCliTlsServerOptions.clientAuthConstraints;
-    final boolean trustStoreSpecified = clientAuthConstraints.getTrustStoreOptions().isPresent();
-    final boolean knownClientsFileSpecified =
-        clientAuthConstraints.getKnownClientsFile().isPresent();
-    final boolean caClientsAllowed = clientAuthConstraints.isCaAuthorizedClientAllowed();
 
     if (!trustStoreSpecified && clientAuthConstraints.getTrustStorePasswordFile() != null) {
       throw new CommandLine.ParameterException(

@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Path;
+import java.security.KeyStoreException;
 import java.util.Optional;
 
 import com.google.common.io.Resources;
@@ -32,7 +33,7 @@ public class HashicorpConnectionTest {
   private final HashicorpConnectionFactory connectionFactory = new HashicorpConnectionFactory();
 
   @Test
-  void missingJksTrustStoreFileThrowsHashicorpException() throws IOException {
+  void emptyTrustStoreFileThrowsHashicorpException() throws IOException {
 
     final File tempFile = File.createTempFile("trustStore", ".tmp");
     tempFile.deleteOnExit();
@@ -48,7 +49,10 @@ public class HashicorpConnectionTest {
 
     assertThatThrownBy(() -> connectionFactory.create(params))
         .isInstanceOf(HashicorpException.class)
-        .hasMessage("Unable to initialise connection to hashicorp vault.");
+        .hasMessage("Unable to initialise connection to hashicorp vault.")
+        .cause()
+        .isInstanceOf(KeyStoreException.class)
+        .hasMessageContaining("Unrecognized keystore format");
   }
 
   @Test

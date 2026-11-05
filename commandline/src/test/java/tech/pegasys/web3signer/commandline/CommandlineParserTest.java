@@ -47,6 +47,8 @@ import org.hyperledger.besu.plugin.services.MetricsSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import picocli.CommandLine;
 
 class CommandlineParserTest {
@@ -460,6 +462,23 @@ class CommandlineParserTest {
     assertThat(commandError.toString())
         .contains(
             "Error parsing parameters: --tls-truststore-password-file requires --tls-truststore-file");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {"--tls-truststore-file=./truststore.pem", "--tls-truststore-password-file=./p"})
+  void tlsTrustStoreOptionsWithoutKeyStoreFailToParse(final String trustStoreOption) {
+    String cmdline = validBaseCommandOptions();
+    cmdline += trustStoreOption + " ";
+    cmdline += "eth2 --slashing-protection-enabled=false";
+
+    parser.registerSubCommands(new MockEth2SubCommand());
+    final int result = parser.parseCommandLine(cmdline.split(" "));
+
+    assertThat(result).isNotZero();
+    assertThat(commandError.toString())
+        .contains(
+            "Error parsing parameters: --tls-truststore-file and --tls-truststore-password-file require --tls-keystore-file and --tls-keystore-password-file");
   }
 
   @Test

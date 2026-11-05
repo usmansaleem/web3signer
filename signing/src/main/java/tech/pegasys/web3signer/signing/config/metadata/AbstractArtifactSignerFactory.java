@@ -122,6 +122,11 @@ public abstract class AbstractArtifactSignerFactory implements ArtifactSignerFac
   @SuppressWarnings("removal") // deprecated tlsKnownServersPath
   private Optional<TlsOptions> buildTlsOptions(final HashicorpSigningMetadata metadata) {
     if (!metadata.getTlsEnabled()) {
+      if (metadata.getTlsTruststoreFile() != null
+          || metadata.getTlsTruststorePasswordFile() != null) {
+        throw new SigningMetadataException(
+            "tlsTruststoreFile and tlsTruststorePasswordFile require tlsEnabled: true");
+      }
       return Optional.empty();
     }
 
@@ -156,7 +161,7 @@ public abstract class AbstractArtifactSignerFactory implements ArtifactSignerFac
           String.format("Known servers file (%s) does not exist.", configRelativeKnownServerPath));
     }
     return Optional.of(
-        new TlsOptions(Optional.of(TrustStoreType.WHITELIST), knownServerFile, null));
+        new TlsOptions(Optional.of(TrustStoreType.WHITELIST), configRelativeKnownServerPath, null));
   }
 
   private TlsOptions buildTrustStoreTlsOptions(

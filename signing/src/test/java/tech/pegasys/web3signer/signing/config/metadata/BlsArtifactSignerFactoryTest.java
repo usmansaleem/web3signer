@@ -253,6 +253,16 @@ class BlsArtifactSignerFactoryTest {
         .hasMessage("tlsTruststorePasswordFile requires tlsTruststoreFile");
   }
 
+  @Test
+  void truststoreWithoutTlsEnabledShowsSuitableError() {
+    final HashicorpSigningMetadata metaData = tlsMetadata(configDir.resolve("truststore.pem"));
+    metaData.setTlsEnabled(false);
+
+    assertThatThrownBy(() -> artifactSignerFactory.create(metaData))
+        .isInstanceOf(SigningMetadataException.class)
+        .hasMessage("tlsTruststoreFile and tlsTruststorePasswordFile require tlsEnabled: true");
+  }
+
   private static HashicorpSigningMetadata tlsMetadata(final Path trustStoreFile) {
     final HashicorpSigningMetadata metaData =
         new HashicorpSigningMetadata("localhost", "keyPath", KeyType.BLS);

@@ -188,6 +188,12 @@ public class Eth1SubCommand extends ModeSubCommand implements Eth1Config {
           "--downstream-http-tls-truststore-password-file requires --downstream-http-tls-truststore-file");
     }
 
+    if (trustStoreSpecified && !clientTlsOptions.isTlsEnabled()) {
+      throw new CommandLine.ParameterException(
+          spec.commandLine(),
+          "--downstream-http-tls-truststore-file requires --downstream-http-tls-enabled");
+    }
+
     final boolean knownServersFileSpecified = clientTlsOptions.getKnownServersFile().isPresent();
     if (trustStoreSpecified && knownServersFileSpecified) {
       throw new CommandLine.ParameterException(
@@ -201,6 +207,11 @@ public class Eth1SubCommand extends ModeSubCommand implements Eth1Config {
           "--downstream-http-tls-ca-auth-enabled cannot be specified together with --downstream-http-tls-truststore-file; the truststore replaces the JVM's default CAs");
     }
 
+    if (knownServersFileSpecified && !clientTlsOptions.isTlsEnabled()) {
+      LOG.warn(
+          "--downstream-http-tls-known-servers-file is ignored because "
+              + "--downstream-http-tls-enabled is not set.");
+    }
     if (knownServersFileSpecified) {
       LOG.warn(
           "--downstream-http-tls-known-servers-file is deprecated and will be removed in a future "
