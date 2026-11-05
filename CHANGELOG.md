@@ -2,6 +2,7 @@
 
 ## Unreleased
 ### Security
+- Guava upgraded to 33.7.2-jre to fix CVE-2026-102554, and snappy-java pinned to 1.1.10.9 to fix CVE-2026-93451 and CVE-2026-108106 (transitive via besu and teku). [#1285][PR_1285]
 
 ### Upcoming Breaking Changes
 The following options are deprecated, log a warning when used, and will be removed in a future release. A truststore can hold CA certificates as well as client or server certificates. [#1282][PR_1282]
@@ -14,13 +15,31 @@ The following options are deprecated, log a warning when used, and will be remov
   - Inbound client authentication: `--tls-truststore-file` and `--tls-truststore-password-file` (cannot be combined with `--tls-allow-ca-clients`).
   - Eth1 downstream web3 provider: `--downstream-http-tls-truststore-file` and `--downstream-http-tls-truststore-password-file`.
   - Hashicorp Vault signing metadata: `tlsTruststoreFile` and `tlsTruststorePasswordFile`; relative paths resolve against the key config directory.
+- Docker images can now be built without a local Java install: when the `TAR_FILE` build argument is omitted, `docker/Dockerfile` and `docker/Dockerfile.distroless` build the distribution from source inside Docker. Building from a pre-built `TAR_FILE` remains the recommended path. See `docker/README.md`. [#1249][PR_1249]
 
 ### Bugs Fixed
 
 ### Breaking Changes
 
 ### CI/Build Enhancements
+- Besu upgraded to 26.10.2. [#1285][PR_1285]
+- Compiler warnings fail the build again. [#1283][PR_1283]
+- Hashicorp Vault acceptance tests run against the `hashicorp/vault` 2.2.1 image via Testcontainers instead of a downloaded 1.9.2 binary. [#1277][PR_1277]
+- Removed the Cloudsmith and jitpack Maven repositories; `errorprone-checks` now resolves from Maven Central (`io.consensys.protocols:errorprone-checks:1.1.2`) and the unused `java-cid` dependency was dropped. [#1288][PR_1288]
+- Gradle wrapper upgraded to 9.8.2. [#1287][PR_1287]
+- AWS tests run in CI against [MiniStack](https://github.com/ministackorg/ministack), which replaces LocalStack. [#1276][PR_1276]
+- GCP Secret Manager acceptance tests run again in CI, against a Testcontainers instance of the offline [gcp-secret-manager-emulator](https://github.com/blackwell-systems/gcp-secret-manager-emulator) instead of real Google Cloud. [#1275][PR_1275]
+- The default Docker image copies its JRE from the digest-pinned `eclipse-temurin:25-jre` image (Temurin 25.0.5+8) instead of downloading the Adoptium release tarball, now that the official image carries the eMudhra CA fix. [#1249][PR_1249]
 
+<!-- Link references for the entries above; not changelog entries. -->
+[PR_1277]: https://github.com/Consensys-Incorporated/web3signer/pull/1277
+[PR_1276]: https://github.com/Consensys-Incorporated/web3signer/pull/1276
+[PR_1283]: https://github.com/Consensys-Incorporated/web3signer/pull/1283
+[PR_1285]: https://github.com/Consensys-Incorporated/web3signer/pull/1285
+[PR_1288]: https://github.com/Consensys-Incorporated/web3signer/pull/1288
+[PR_1287]: https://github.com/Consensys-Incorporated/web3signer/pull/1287
+[PR_1275]: https://github.com/Consensys-Incorporated/web3signer/pull/1275
+[PR_1249]: https://github.com/Consensys-Incorporated/web3signer/pull/1249
 [PR_1282]: https://github.com/Consensys-Incorporated/web3signer/pull/1282
 
 ---

@@ -11,6 +11,14 @@
  * specific language governing permissions and limitations under the License.
  */
 
+// Docker images used by the acceptance tests, passed to them as system properties.
+ext {
+  azureKeyVaultEmulatorImage = 'ghcr.io/rokeller/azure-keyvault-emulator:v2.3.0-rc1@sha256:013377a594e9453c967b1762e0a595b311aa58349473322f632e9c1733273eb2'
+  gcpSecretManagerEmulatorImage = 'ghcr.io/blackwell-systems/gcp-secret-manager-emulator-dual:1.9.0@sha256:2c9d3bb0453fdff102b29af00b4abd9b2c6fa466031a9d8e6d93a270ba22a6e2'
+  gcpSecretManagerTlsProxyImage = 'nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951'
+  hashicorpVaultImage = 'hashicorp/vault:2.2.1@sha256:962a92876e168d68eaaa24b0b8b49bbce1cb63024060a67bba95cd158a366fc2'
+}
+
 // ./gradlew dependencyUpdates --no-parallel` to report outdated dependencies
 dependencyManagement {
   imports {
@@ -40,9 +48,16 @@ dependencyManagement {
       entry 'error_prone_test_helpers'
     }
 
-    dependency 'tech.pegasys.tools.epchecks:errorprone-checks:1.1.1'
+    dependency 'io.consensys.protocols:errorprone-checks:1.1.2'
 
-    dependency 'com.google.guava:guava:33.7.1-jre'
+    // Guava is used directly by our modules (declared without a version), so keep this entry.
+    // CVE-2026-102554: fixed in 33.7.2; bump to the latest 33.x when a new fix is released.
+    dependency 'com.google.guava:guava:33.7.2-jre'
+
+    // CVE-2026-93451, CVE-2026-108106: fixed in 1.1.10.9. Pulled in transitively via besu
+    // (besu-util, besu-ethereum-core; constrained to 1.1.10.7 by the besu BOM) and teku (serializer/spec).
+    // Remove this pin once besu/teku ship snappy-java >= 1.1.10.9.
+    dependency 'org.xerial.snappy:snappy-java:1.1.10.9'
     dependency 'com.github.ben-manes.caffeine:caffeine:3.3.0'
 
     dependency 'commons-cli:commons-cli:1.11.0'
@@ -78,7 +93,7 @@ dependencyManagement {
       entry 'bcprov-jdk18on'
     }
 
-    dependency 'org.mock-server:mockserver-netty:8.0.0'
+    dependency 'org.mock-server:mockserver-netty:9.2.0'
 
     dependencySet(group: 'org.mockito', version: '5.23.0') {
       entry 'mockito-core'
@@ -162,7 +177,6 @@ dependencyManagement {
     dependency 'io.zonky.test.postgres:embedded-postgres-binaries-bom:18.6.0'
     dependency 'io.zonky.test:embedded-postgres:2.2.2'
 
-    dependency 'com.github.ipld:java-cid:1.4.0'
     dependency 'net.jodah:failsafe:2.4.4'
 
     dependencySet(group: 'software.amazon.awssdk', version: '2.55.3') {

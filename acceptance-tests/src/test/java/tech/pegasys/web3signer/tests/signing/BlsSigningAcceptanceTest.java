@@ -122,8 +122,7 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
   @Test
   public void ableToSignUsingHashicorp() throws JsonProcessingException {
     final String configFilename = KEY_PAIR.getPublicKey().toString().substring(2);
-    final HashicorpNode hashicorpNode = HashicorpNode.createAndStartHashicorp(true);
-    try {
+    try (final HashicorpNode hashicorpNode = HashicorpNode.createAndStartHashicorp(true)) {
       final String secretPath = "acceptanceTestSecretPath";
       final String secretName = "secretName";
 
@@ -136,8 +135,6 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
           Optional.empty());
 
       signAndVerifySignature(ArtifactType.BLOCK);
-    } finally {
-      hashicorpNode.shutdown();
     }
   }
 
@@ -146,8 +143,7 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
   public void ableToSignUsingHashicorpWithHttpProtocolOverride(
       final String httpProtocolVersion, boolean withTLS) throws JsonProcessingException {
     final String configFilename = KEY_PAIR.getPublicKey().toString().substring(2);
-    final HashicorpNode hashicorpNode = HashicorpNode.createAndStartHashicorp(withTLS);
-    try {
+    try (final HashicorpNode hashicorpNode = HashicorpNode.createAndStartHashicorp(withTLS)) {
       final String secretPath = "acceptanceTestSecretPath";
       final String secretName = "secretName";
 
@@ -160,8 +156,6 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
           Optional.ofNullable(httpProtocolVersion));
 
       signAndVerifySignature(ArtifactType.BLOCK);
-    } finally {
-      hashicorpNode.shutdown();
     }
   }
 
@@ -245,7 +239,7 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
     final String roAwsAccessKeyId = System.getenv("AWS_ACCESS_KEY_ID");
     final String roAwsSecretAccessKey = System.getenv("AWS_SECRET_ACCESS_KEY");
     final String region = Optional.ofNullable(System.getenv("AWS_REGION")).orElse("us-east-2");
-    // can be pointed to localstack
+    // can be pointed to an AWS emulator
     final Optional<URI> awsEndpointOverride =
         System.getenv("AWS_ENDPOINT_OVERRIDE") != null
             ? Optional.of(URI.create(System.getenv("AWS_ENDPOINT_OVERRIDE")))
