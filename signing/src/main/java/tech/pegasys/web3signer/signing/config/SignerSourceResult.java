@@ -67,6 +67,11 @@ public record SignerSourceResult(
         results.getErrorCount() > 0);
   }
 
+  /** This result under another source name; proxy keystores are named after their directory. */
+  public SignerSourceResult withSource(final String source) {
+    return new SignerSourceResult(source, signers, failedFiles, errorCount, sourceFailed);
+  }
+
   @VisibleForTesting
   public List<ArtifactSigner> artifactSigners() {
     return signers.stream().map(LoadedSigner::signer).toList();

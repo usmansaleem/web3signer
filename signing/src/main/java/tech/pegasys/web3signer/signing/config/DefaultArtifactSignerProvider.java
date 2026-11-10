@@ -632,14 +632,7 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
     if (password.get().isEmpty()) {
       return Optional.of(SignerSourceResult.sourceFailure(source));
     }
-    final SignerSourceResult result = loaderFunction.apply(proxyDir, password.get().get());
-    return Optional.of(
-        new SignerSourceResult(
-            source,
-            result.signers(),
-            result.failedFiles(),
-            result.errorCount(),
-            result.sourceFailed()));
+    return Optional.of(loaderFunction.apply(proxyDir, password.get().get()).withSource(source));
   }
 
   /**

@@ -885,6 +885,60 @@ class DefaultArtifactSignerProviderTest {
         .containsExactlyInAnyOrder(getPublicKeysArray(blsProxies));
   }
 
+  // POSIX only: an unreadable proxy keystores path needs a POSIX permission view, and root
+  // bypasses the permission check, hence the assumption below.
+  @Test
+  @DisabledOnOs(OS.WINDOWS)
+  void proxySignersAreRetainedWhenProxyKeystoresPathCannotBeRead() throws Exception {
+    final KeystoresParameters commitBoostParameters =
+        new TestCommitBoostParameters(commitBoostKeystoresPath, commitBoostPasswordDir);
+    final List<BLSKeyPair> blsProxies = randomBLSV4Keystores(PUBLIC_KEY1);
+    final List<ECKeyPair> secpProxies = randomSecpV3Keystores(PUBLIC_KEY1);
+    randomBLSV4Keystores(PUBLIC_KEY2);
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(
+                sourceResult(
+                    "key config files", mockSigner(PUBLIC_KEY1), mockSigner(PUBLIC_KEY2))));
+
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            resultsRef::get, Optional.empty(), Optional.of(commitBoostParameters));
+    signerProvider.load().get();
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY2)).isNotEmpty();
+
+    // the keystores path cannot be read while consensus key 2 is removed
+    resultsRef.set(List.of(sourceResult("key config files", mockSigner(PUBLIC_KEY1))));
+    final Set<PosixFilePermission> permissions =
+        Files.getPosixFilePermissions(commitBoostKeystoresPath);
+    Files.setPosixFilePermissions(commitBoostKeystoresPath, Set.of());
+    try {
+      assumeFalse(Files.isReadable(commitBoostKeystoresPath));
+      signerProvider.load().get();
+    } finally {
+      Files.setPosixFilePermissions(commitBoostKeystoresPath, permissions);
+    }
+
+    final Map<KeyType, Set<String>> proxies = signerProvider.getProxyIdentifiers(PUBLIC_KEY1);
+    assertThat(proxies.get(KeyType.BLS)).containsExactlyInAnyOrder(getPublicKeysArray(blsProxies));
+    assertThat(proxies.get(KeyType.SECP256K1))
+        .containsExactlyInAnyOrder(getCompressedSECPPublicKeysArray(secpProxies));
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY2)).isEmpty();
+
+    // readable again: a retained proxy whose file now fails is still kept by its file
+    final String failedProxy = blsProxies.get(0).getPublicKey().toString();
+    Files.writeString(
+        commitBoostKeystoresPath
+            .resolve(PUBLIC_KEY1)
+            .resolve(KeyType.BLS.name())
+            .resolve(failedProxy + ".json"),
+        "not a keystore");
+    signerProvider.load().get();
+
+    assertThat(signerProvider.getProxyIdentifiers(PUBLIC_KEY1).get(KeyType.BLS))
+        .containsExactlyInAnyOrder(getPublicKeysArray(blsProxies));
+  }
+
   @Test
   void proxySignerOfFailedFileIsRetainedWhileDeletedProxySignerIsRemoved() throws Exception {
     final KeystoresParameters commitBoostParameters =

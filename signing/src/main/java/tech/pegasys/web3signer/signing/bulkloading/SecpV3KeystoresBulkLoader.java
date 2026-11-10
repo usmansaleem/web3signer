@@ -16,7 +16,6 @@ import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.EthSecpArtifactSigner;
 import tech.pegasys.web3signer.signing.K256ArtifactSigner;
 import tech.pegasys.web3signer.signing.config.SignerSourceResult;
-import tech.pegasys.web3signer.signing.config.SignerSourceResult.LoadedSigner;
 import tech.pegasys.web3signer.signing.secp256k1.filebased.CredentialSigner;
 import tech.pegasys.web3signer.signing.secp256k1.util.JsonFilesUtil;
 
@@ -25,9 +24,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.logging.log4j.LogManager;
@@ -107,23 +103,11 @@ public class SecpV3KeystoresBulkLoader {
       return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
-    final ConcurrentLinkedQueue<LoadedSigner> signers = new ConcurrentLinkedQueue<>();
-    final Set<String> failedFiles = ConcurrentHashMap.newKeySet();
-
-    keystoresFiles.parallelStream()
-        .forEach(
-            keystoreFile -> {
-              final Optional<ArtifactSigner> signer =
-                  createSecpArtifactSigner(keystoreFile, passwordReader, ethereumSECPCompatible);
-              if (signer.isPresent()) {
-                signers.add(new LoadedSigner(signer.get(), Optional.of(keystoreFile.toString())));
-              } else {
-                failedFiles.add(keystoreFile.toString());
-              }
-            });
-
-    return new SignerSourceResult(
-        SOURCE_NAME, List.copyOf(signers), failedFiles, failedFiles.size(), false);
+    return KeystoreFilesLoader.load(
+        SOURCE_NAME,
+        keystoresFiles,
+        keystoreFile ->
+            createSecpArtifactSigner(keystoreFile, passwordReader, ethereumSECPCompatible));
   }
 
   private static Optional<ArtifactSigner> createSecpArtifactSigner(

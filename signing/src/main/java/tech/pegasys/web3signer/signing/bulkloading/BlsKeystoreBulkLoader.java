@@ -19,7 +19,6 @@ import tech.pegasys.web3signer.bls.keystore.model.KeyStoreData;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.BlsArtifactSigner;
 import tech.pegasys.web3signer.signing.config.SignerSourceResult;
-import tech.pegasys.web3signer.signing.config.SignerSourceResult.LoadedSigner;
 import tech.pegasys.web3signer.signing.config.metadata.SignerOrigin;
 import tech.pegasys.web3signer.signing.secp256k1.util.JsonFilesUtil;
 
@@ -28,10 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.function.Function;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.logging.log4j.LogManager;
@@ -60,8 +55,10 @@ public class BlsKeystoreBulkLoader {
       return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
-    return loadKeystores(
-        keystoreFiles, keystoreFile -> createSignerForKeystore(keystoreFile, passwordReader));
+    return KeystoreFilesLoader.load(
+        SOURCE_NAME,
+        keystoreFiles,
+        keystoreFile -> createSignerForKeystore(keystoreFile, passwordReader));
   }
 
   public static SignerSourceResult loadKeystoresUsingPasswordFile(
@@ -88,28 +85,10 @@ public class BlsKeystoreBulkLoader {
       return SignerSourceResult.sourceFailure(SOURCE_NAME);
     }
 
-    return loadKeystores(
-        keystoreFiles, keystoreFile -> createSignerForKeystore(keystoreFile, ignored -> password));
-  }
-
-  private static SignerSourceResult loadKeystores(
-      final List<Path> keystoreFiles, final Function<Path, Optional<ArtifactSigner>> loadFile) {
-    final ConcurrentLinkedQueue<LoadedSigner> signers = new ConcurrentLinkedQueue<>();
-    final Set<String> failedFiles = ConcurrentHashMap.newKeySet();
-
-    keystoreFiles.parallelStream()
-        .forEach(
-            keystoreFile -> {
-              final Optional<ArtifactSigner> signer = loadFile.apply(keystoreFile);
-              if (signer.isPresent()) {
-                signers.add(new LoadedSigner(signer.get(), Optional.of(keystoreFile.toString())));
-              } else {
-                failedFiles.add(keystoreFile.toString());
-              }
-            });
-
-    return new SignerSourceResult(
-        SOURCE_NAME, List.copyOf(signers), failedFiles, failedFiles.size(), false);
+    return KeystoreFilesLoader.load(
+        SOURCE_NAME,
+        keystoreFiles,
+        keystoreFile -> createSignerForKeystore(keystoreFile, ignored -> password));
   }
 
   private static Optional<ArtifactSigner> createSignerForKeystore(
