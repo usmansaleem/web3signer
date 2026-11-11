@@ -18,6 +18,7 @@ import tech.pegasys.web3signer.signing.config.SignerSourceResult.LoadedSigner;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,28 +31,55 @@ final class KeystoreFilesLoader {
   private KeystoreFilesLoader() {}
 
   /**
-   * @param loadFile loads one keystore file; empty if it failed. Must not throw, so that one file
-   *     cannot fail the whole load.
+   * Outcome of loading one keystore file.
+   *
+   * @param signer the loaded signer, {@code null} if the file failed
+   * @param claimedKey for a failed file, the unverified key it claims to hold, or {@code null}
+   */
+  record FileResult(ArtifactSigner signer, String claimedKey) {
+    private static final FileResult FAILED = new FileResult(null, null);
+
+    static FileResult loaded(final ArtifactSigner signer) {
+      return new FileResult(signer, null);
+    }
+
+    static FileResult failed() {
+      return FAILED;
+    }
+
+    static FileResult failedClaiming(final String claimedKey) {
+      return claimedKey == null ? FAILED : new FileResult(null, claimedKey);
+    }
+  }
+
+  /**
+   * @param loadFile loads one keystore file. Must not throw, so that one file cannot fail the whole
+   *     load.
    */
   static SignerSourceResult load(
       final String source,
       final List<Path> keystoreFiles,
-      final Function<Path, Optional<ArtifactSigner>> loadFile) {
+      final Function<Path, FileResult> loadFile) {
     final ConcurrentLinkedQueue<LoadedSigner> signers = new ConcurrentLinkedQueue<>();
     final Set<String> failedFiles = ConcurrentHashMap.newKeySet();
+    final Map<String, String> failedFileKeys = new ConcurrentHashMap<>();
 
     keystoreFiles.parallelStream()
         .forEach(
             keystoreFile -> {
-              final Optional<ArtifactSigner> signer = loadFile.apply(keystoreFile);
-              if (signer.isPresent()) {
-                signers.add(new LoadedSigner(signer.get(), Optional.of(keystoreFile.toString())));
+              final FileResult result = loadFile.apply(keystoreFile);
+              final String file = keystoreFile.toString();
+              if (result.signer() != null) {
+                signers.add(new LoadedSigner(result.signer(), Optional.of(file)));
               } else {
-                failedFiles.add(keystoreFile.toString());
+                failedFiles.add(file);
+                if (result.claimedKey() != null) {
+                  failedFileKeys.put(file, result.claimedKey());
+                }
               }
             });
 
     return new SignerSourceResult(
-        source, List.copyOf(signers), failedFiles, failedFiles.size(), false);
+        source, List.copyOf(signers), failedFiles, failedFiles.size(), false, failedFileKeys);
   }
 }

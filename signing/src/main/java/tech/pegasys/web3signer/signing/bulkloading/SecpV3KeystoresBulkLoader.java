@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.logging.log4j.LogManager;
@@ -110,7 +109,7 @@ public class SecpV3KeystoresBulkLoader {
             createSecpArtifactSigner(keystoreFile, passwordReader, ethereumSECPCompatible));
   }
 
-  private static Optional<ArtifactSigner> createSecpArtifactSigner(
+  private static KeystoreFilesLoader.FileResult createSecpArtifactSigner(
       final Path v3KeystorePath,
       final PasswordReader passwordReader,
       final boolean ethereumSECPCompatible) {
@@ -127,10 +126,10 @@ public class SecpV3KeystoresBulkLoader {
               ? new EthSecpArtifactSigner(new CredentialSigner(credentials))
               : new K256ArtifactSigner(credentials.getEcKeyPair());
 
-      return Optional.of(artifactSigner);
+      return KeystoreFilesLoader.FileResult.loaded(artifactSigner);
     } catch (final IOException | CipherException | RuntimeException e) {
       LOG.error("Error loading v3 keystore {}", v3KeystorePath, e);
-      return Optional.empty();
+      return KeystoreFilesLoader.FileResult.failed();
     }
   }
 }

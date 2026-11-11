@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.Collection;
+import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.tuweni.bytes.Bytes;
@@ -133,6 +134,23 @@ class BlsKeystoreBulkLoaderTest {
     assertThat(result.failedFiles())
         .containsExactly(keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".json").toString());
     assertThat(result.sourceFailed()).isFalse();
+  }
+
+  @Test
+  void keystoreWithoutPasswordClaimsItsPubkeyButKeystoreWithWrongPasswordDoesNot(
+      final @TempDir Path keystoreDir, final @TempDir Path passwordDir) {
+    final Path noPassword = KeystoreUtil.createKeystoreFile(KEY_PAIR_1, keystoreDir, "password1");
+    final Path wrongPassword =
+        KeystoreUtil.createKeystoreFile(KEY_PAIR_2, keystoreDir, KEYSTORE_PASSWORD_2);
+    KeystoreUtil.createKeystorePasswordFile(KEY_PAIR_2, passwordDir, "wrong");
+
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+
+    assertThat(result.failedFiles())
+        .containsExactlyInAnyOrder(noPassword.toString(), wrongPassword.toString());
+    assertThat(result.failedFileKeys())
+        .containsExactly(Map.entry(noPassword.toString(), KEY_PAIR_1.getPublicKey().toString()));
   }
 
   @Test

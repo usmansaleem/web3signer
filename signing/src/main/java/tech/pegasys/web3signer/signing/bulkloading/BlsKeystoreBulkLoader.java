@@ -16,17 +16,16 @@ import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.web3signer.bls.keystore.KeyStore;
 import tech.pegasys.web3signer.bls.keystore.KeyStoreLoader;
 import tech.pegasys.web3signer.bls.keystore.model.KeyStoreData;
-import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.BlsArtifactSigner;
 import tech.pegasys.web3signer.signing.config.SignerSourceResult;
 import tech.pegasys.web3signer.signing.config.metadata.SignerOrigin;
 import tech.pegasys.web3signer.signing.secp256k1.util.JsonFilesUtil;
+import tech.pegasys.web3signer.signing.util.IdentifierUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.logging.log4j.LogManager;
@@ -91,19 +90,37 @@ public class BlsKeystoreBulkLoader {
         keystoreFile -> createSignerForKeystore(keystoreFile, ignored -> password));
   }
 
-  private static Optional<ArtifactSigner> createSignerForKeystore(
+  /**
+   * A keystore whose password file cannot be read reports the pubkey in its JSON, which a renamed
+   * keystore still holds. The pubkey is unverified: decryption has not run, so nothing contradicts
+   * it. A keystore that fails at or after decryption claims nothing.
+   */
+  private static KeystoreFilesLoader.FileResult createSignerForKeystore(
       final Path keystoreFile, final PasswordReader passwordReader) {
+    LOG.debug("Loading keystore {}", keystoreFile);
     try {
-      LOG.debug("Loading keystore {}", keystoreFile);
       final KeyStoreData keyStoreData = KeyStoreLoader.loadFromFile(keystoreFile.toUri());
       final String fileNameWithoutExt =
           FilenameUtils.removeExtension(keystoreFile.getFileName().toString());
-      final String password = passwordReader.readPassword(fileNameWithoutExt + ".txt");
+      final String password;
+      try {
+        password = passwordReader.readPassword(fileNameWithoutExt + ".txt");
+      } catch (final IOException e) {
+        LOG.error("Password of keystore {} could not be read", keystoreFile, e);
+        return KeystoreFilesLoader.FileResult.failedClaiming(claimedKey(keyStoreData));
+      }
       final BLSKeyPair keyPair = KeyStore.decrypt(password, keyStoreData);
-      return Optional.of(new BlsArtifactSigner(keyPair, SignerOrigin.FILE_KEYSTORE));
-    } catch (final IOException | RuntimeException e) {
+      return KeystoreFilesLoader.FileResult.loaded(
+          new BlsArtifactSigner(keyPair, SignerOrigin.FILE_KEYSTORE));
+    } catch (final RuntimeException e) {
       LOG.error("Keystore could not be loaded {}", keystoreFile, e);
-      return Optional.empty();
+      return KeystoreFilesLoader.FileResult.failed();
     }
+  }
+
+  private static String claimedKey(final KeyStoreData keyStoreData) {
+    return keyStoreData.pubkey() == null
+        ? null
+        : IdentifierUtils.normaliseIdentifier(keyStoreData.pubkey().toHexString());
   }
 }

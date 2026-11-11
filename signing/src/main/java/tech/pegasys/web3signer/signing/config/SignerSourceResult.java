@@ -16,6 +16,7 @@ import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -33,13 +34,16 @@ import com.google.common.annotations.VisibleForTesting;
  * @param errorCount number of errors in this source
  * @param sourceFailed failure not attributable to a file (unlistable directory, unreadable shared
  *     password file, any vault error)
+ * @param failedFileKeys failed files whose key could be read without decrypting, by file: the
+ *     unverified key a keystore claims to hold when its own password file could not be read
  */
 public record SignerSourceResult(
     String source,
     List<LoadedSigner> signers,
     Set<String> failedFiles,
     int errorCount,
-    boolean sourceFailed) {
+    boolean sourceFailed,
+    Map<String, String> failedFileKeys) {
 
   /** A loaded signer and its file; the file is empty for vaults. */
   public record LoadedSigner(ArtifactSigner signer, Optional<String> file) {}
@@ -47,6 +51,17 @@ public record SignerSourceResult(
   public SignerSourceResult {
     signers = List.copyOf(signers);
     failedFiles = Set.copyOf(failedFiles);
+    failedFileKeys = Map.copyOf(failedFileKeys);
+  }
+
+  /** A result without keys claimed by failed files. */
+  public SignerSourceResult(
+      final String source,
+      final List<LoadedSigner> signers,
+      final Set<String> failedFiles,
+      final int errorCount,
+      final boolean sourceFailed) {
+    this(source, signers, failedFiles, errorCount, sourceFailed, Map.of());
   }
 
   /** The whole source failed before any file could be loaded. */
@@ -69,7 +84,8 @@ public record SignerSourceResult(
 
   /** This result under another source name; proxy keystores are named after their directory. */
   public SignerSourceResult withSource(final String source) {
-    return new SignerSourceResult(source, signers, failedFiles, errorCount, sourceFailed);
+    return new SignerSourceResult(
+        source, signers, failedFiles, errorCount, sourceFailed, failedFileKeys);
   }
 
   @VisibleForTesting

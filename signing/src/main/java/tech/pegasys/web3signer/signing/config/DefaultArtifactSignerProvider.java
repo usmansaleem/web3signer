@@ -134,6 +134,15 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       }
       return false;
     }
+
+    private boolean hasSource(final String source) {
+      for (Provenance place = this; place != null; place = place.next) {
+        if (place.source.equals(source)) {
+          return true;
+        }
+      }
+      return false;
+    }
   }
 
   private final ExecutorService executorService =
@@ -179,7 +188,8 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    * invalid keys) are counted but do not prevent the loading of other valid signers. Successfully
    * loaded signers are made available even if some configurations fail. The returned error count
    * allows callers to detect partial failures. A missing signer is kept if its source or one of its
-   * files failed to load; otherwise it is removed.
+   * files failed to load, or if a keystore of its source whose password file cannot be read claims
+   * its pubkey; otherwise it is removed.
    *
    * <p>This method is typically invoked:
    *
@@ -639,7 +649,9 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
    * Keeps previously loaded signers that are missing because their source or file failed to load,
    * so a failure is not reported as a removal (and does not disable them in slashing protection).
    * Only the failed places are kept. A signer that still loads keeps its previous failed places.
-   * Signers imported in memory only are always kept.
+   * Signers imported in memory only are always kept. A signer none of whose places failed is kept
+   * if a failed file of one of its sources claims its key (a renamed keystore whose password file
+   * was not renamed); that file becomes its place.
    */
   private static void retainSignersOfFailedSources(
       final SignerState currentState,
@@ -657,9 +669,16 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
         }
         continue;
       }
-      final Provenance kept = keptPlaces(provenance, failures);
+      Provenance kept = keptPlaces(provenance, failures);
       if (kept == null) {
-        continue;
+        kept = failures.claimingPlaces(identifier, provenance);
+        if (kept == null) {
+          continue;
+        }
+        LOG.warn(
+            "Retained previously loaded key {}: failed keystore file {} claims it",
+            identifier,
+            kept.file());
       }
       newSigners.put(identifier, previous.getValue());
       newProvenance.put(identifier, kept);
@@ -710,26 +729,36 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
   }
 
   /**
-   * What failed in one load: whole sources, and individual files by source. Built once per load, so
-   * checking a place is a hash lookup instead of a scan of the results.
+   * What failed in one load: whole sources, individual files by source, and the keys failed files
+   * claim to hold. Built once per load, so checking a place is a hash lookup instead of a scan of
+   * the results.
    */
-  private record Failures(Set<String> failedSources, Map<String, Set<String>> failedFiles) {
-    private static final Failures NONE = new Failures(Set.of(), Map.of());
+  private record Failures(
+      Set<String> failedSources,
+      Map<String, Set<String>> failedFiles,
+      Map<String, Provenance> claims) {
+    private static final Failures NONE = new Failures(Set.of(), Map.of(), Map.of());
 
     private static Failures of(final List<SignerSourceResult> results) {
       final Set<String> failedSources = new HashSet<>();
       final Map<String, Set<String>> failedFiles = new HashMap<>();
+      final Map<String, Provenance> claims = new HashMap<>();
       for (final SignerSourceResult result : results) {
         if (result.sourceFailed()) {
           failedSources.add(result.source());
         } else if (!result.failedFiles().isEmpty()) {
           failedFiles.merge(result.source(), result.failedFiles(), Sets::union);
+          result
+              .failedFileKeys()
+              .forEach(
+                  (file, key) ->
+                      claims.merge(key, new Provenance(result.source(), file), Provenance::merge));
         }
       }
       if (failedSources.isEmpty() && failedFiles.isEmpty()) {
         return NONE;
       }
-      return new Failures(failedSources, failedFiles);
+      return new Failures(failedSources, failedFiles, claims);
     }
 
     private boolean isEmpty() {
@@ -742,6 +771,25 @@ public class DefaultArtifactSignerProvider implements ArtifactSignerProvider {
       }
       final Set<String> files = failedFiles.get(place.source());
       return files != null && place.file() != null && files.contains(place.file());
+    }
+
+    /**
+     * The failed files that claim {@code identifier} in a source it was loaded from, or {@code
+     * null}. A claim from another source is ignored, so it cannot keep a key the operator removed
+     * from its own source.
+     */
+    private Provenance claimingPlaces(final String identifier, final Provenance provenance) {
+      final Provenance claimed = claims.get(identifier);
+      if (claimed == null || provenance == null) {
+        return null;
+      }
+      Provenance kept = null;
+      for (Provenance claim = claimed; claim != null; claim = claim.next()) {
+        if (provenance.hasSource(claim.source())) {
+          kept = new Provenance(claim.source(), claim.file(), kept);
+        }
+      }
+      return kept;
     }
   }
 }

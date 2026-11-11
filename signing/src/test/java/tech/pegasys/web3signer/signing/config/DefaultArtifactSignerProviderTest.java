@@ -27,6 +27,7 @@ import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.BlsArtifactSigner;
 import tech.pegasys.web3signer.signing.KeyType;
+import tech.pegasys.web3signer.signing.bulkloading.BlsKeystoreBulkLoader;
 import tech.pegasys.web3signer.signing.config.metadata.SignerOrigin;
 import tech.pegasys.web3signer.signing.secp256k1.EthPublicKeyUtils;
 
@@ -742,6 +743,72 @@ class DefaultArtifactSignerProviderTest {
     signerProvider.load().get();
 
     assertThat(signerProvider.availableIdentifiers()).containsExactly(PUBLIC_KEY1);
+  }
+
+  @Test
+  void renamedKeystoreIsRetainedOnlyWhileItsPasswordFileIsMissing(
+      final @TempDir Path keystoreDir, final @TempDir Path passwordDir) throws Exception {
+    final BLSKeyPair keyPair1 = BLSTestUtil.randomKeyPair(1);
+    final BLSKeyPair keyPair2 = BLSTestUtil.randomKeyPair(2);
+    final Path keystore1 =
+        KeystoreUtil.createKeystore(keyPair1, keystoreDir, passwordDir, "pw1").getKey();
+    final Path keystore2 =
+        KeystoreUtil.createKeystore(keyPair2, keystoreDir, passwordDir, "pw2").getKey();
+    final String key1 = keyPair1.getPublicKey().toString();
+    final String key2 = keyPair2.getPublicKey().toString();
+    final List<Set<String>> removed = new ArrayList<>();
+    signerProvider =
+        new DefaultArtifactSignerProvider(
+            () ->
+                List.of(
+                    BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir)),
+            Optional.of((added, removedKeys) -> removed.add(removedKeys)),
+            Optional.empty());
+    signerProvider.load().get();
+    assertThat(signerProvider.availableIdentifiers()).containsExactlyInAnyOrder(key1, key2);
+
+    // both keystores renamed without their password files; key 2 gets a wrong password
+    final Path renamed1 = Files.move(keystore1, keystoreDir.resolve("renamed1.json"));
+    final Path renamed2 = Files.move(keystore2, keystoreDir.resolve("renamed2.json"));
+    Files.writeString(passwordDir.resolve("renamed2.txt"), "wrong");
+    assertThat(signerProvider.load().get()).isEqualTo(2);
+
+    // the missing password file leaves the pubkey unverified but uncontradicted: key 1 is kept
+    assertThat(signerProvider.availableIdentifiers()).containsExactly(key1);
+    assertThat(removed.getLast()).containsExactly(key2);
+
+    // the claiming file is now key 1's file: deleting it removes the key
+    Files.delete(renamed1);
+    Files.delete(renamed2);
+    assertThat(signerProvider.load().get()).isZero();
+    assertThat(signerProvider.availableIdentifiers()).isEmpty();
+    assertThat(removed.getLast()).containsExactly(key1);
+  }
+
+  @Test
+  void keyClaimedByFailedFileOfAnotherSourceIsRemoved() throws Exception {
+    final ArtifactSigner signer = mockSigner(PUBLIC_KEY1);
+    final AtomicReference<List<SignerSourceResult>> resultsRef =
+        new AtomicReference<>(
+            List.of(fileResult("key config files", Map.of("/config/a.yaml", signer))));
+    signerProvider =
+        new DefaultArtifactSignerProvider(resultsRef::get, Optional.empty(), Optional.empty());
+    signerProvider.load().get();
+
+    // a.yaml is deleted; a keystore of another source claims the key
+    resultsRef.set(
+        List.of(
+            fileResult("key config files", Map.of()),
+            new SignerSourceResult(
+                "bls keystores",
+                List.of(),
+                Set.of("/keystores/b.json"),
+                1,
+                false,
+                Map.of("/keystores/b.json", PUBLIC_KEY1))));
+    signerProvider.load().get();
+
+    assertThat(signerProvider.availableIdentifiers()).isEmpty();
   }
 
   @Test
